@@ -620,12 +620,26 @@ public class ClearSightImageProcessor {
             if (bothTaken ) {
                 if (!byTimeout) {
                     if (mCallback != null) {
-                        Image bayerImage = mBayerImages.poll();
-                        Image monoImage = mMonoImages.poll();
-                        imwriteBayer(bayerImage);
-                        imwriteMono(monoImage);
-                        bayerImage.close();
-                        monoImage.close();
+                        final Image bayerImage = mBayerImages.poll();
+                        final Image monoImage = mMonoImages.poll();
+                        new Thread(new Runnable() {
+                            public void run() {
+                                imwriteBayer(bayerImage);
+                                bayerImage.close();
+
+                            }
+                        }).start();
+                        new Thread(new Runnable() {
+                            public void run() {
+                                imwriteMono(monoImage);
+                                monoImage.close();
+
+                            }
+                        }).start();
+//                        imwriteBayer(bayerImage);
+//                        bayerImage.close();
+//                        imwriteMono(monoImage);
+//                        monoImage.close();
                         mCallback.onClearSightSuccess(mBayerData);
                     }
                 }
