@@ -40,34 +40,34 @@ public class FocusStateListener {
         mUI = ui;
     }
 
-    public void onFocusStatusUpdate(int focusState) {
+    public void onFocusStatusUpdate(int focusState, int id) {
         switch (focusState) {
             case CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN:
-                Log.d(TAG, "CONTROL_AF_STATE_ACTIVE_SCAN onFocusStarted");
+                Log.d(TAG, "CONTROL_AF_STATE_ACTIVE_SCAN onFocusStarted " + String.valueOf(id));
                 mUI.onFocusStarted();
                 break;
             case CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED:
-                Log.d(TAG, "CONTROL_AF_STATE_FOCUSED_LOCKED onFocusSucceeded");
+                Log.d(TAG, "CONTROL_AF_STATE_FOCUSED_LOCKED onFocusSucceeded " + String.valueOf(id));
                 mUI.onFocusSucceeded(false);
                 break;
             case CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED:
-                Log.d(TAG, "CONTROL_AF_STATE_NOT_FOCUSED_LOCKED onFocusFailed");
+                Log.d(TAG, "CONTROL_AF_STATE_NOT_FOCUSED_LOCKED onFocusFailed " + String.valueOf(id));
                 mUI.onFocusFailed(false);
                 break;
             case CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED:
-                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_FOCUSED onFocusSucceeded");
+                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_FOCUSED onFocusSucceeded " + String.valueOf(id));
                 mUI.onFocusSucceeded(true);
                 break;
             case CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN:
-                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_SCAN onFocusStarted");
+                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_SCAN onFocusStarted " + String.valueOf(id));
                 mUI.onFocusStarted();
                 break;
             case CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED:
-                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_UNFOCUSED onFocusFailed");
+                Log.d(TAG, "CONTROL_AF_STATE_PASSIVE_UNFOCUSED onFocusFailed " + String.valueOf(id));
                 mUI.onFocusFailed(true);
                 break;
             case CaptureResult.CONTROL_AF_STATE_INACTIVE:
-                Log.d(TAG, "CONTROL_AF_STATE_INACTIVE clearFocus");
+                Log.d(TAG, "CONTROL_AF_STATE_INACTIVE clearFocus " + String.valueOf(id));
                 mUI.clearFocus();
                 break;
         }
