@@ -41,6 +41,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Vector;
 
 import org.codeaurora.snapcam.filter.ClearSightNativeEngine.CamSystemCalibrationData;
 //import org.codeaurora.snapcam.filter.ClearSightNativeEngine.ClearsightImage;
@@ -48,6 +49,8 @@ import org.codeaurora.snapcam.filter.ClearSightNativeEngine.CamSystemCalibration
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.core.*;
+
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -73,6 +76,7 @@ import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.media.ImageWriter;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -147,6 +151,7 @@ public class ClearSightImageProcessor {
     private float mFinalPictureRatio;
     private Size mFinalPictureSize;
     private Size mFinalMonoSize;
+
 
     private ImageProcessHandler mImageProcessHandler;
 //    private ClearsightRegisterHandler mClearsightRegisterHandler;
@@ -542,6 +547,16 @@ public class ClearSightImageProcessor {
 //        }
 //    }
 
+    public static void  mkdir(String path) {
+        File directory = new File(path);
+        if (!directory.exists()) {
+            if (directory.mkdirs()) {
+                Log.d("DualCaptureUtils", "Successfully created the parent dir: " + path);
+            } else {
+                Log.d("DualCaptureUtils", "Failed to create the parent dir: " + path);
+            }
+        }
+    }
     private class ImageProcessHandler extends Handler {
 //        private ArrayDeque<ReprocessableImage> mBayerFrames = new ArrayDeque<ReprocessableImage>(
 //                mNumBurstCount);
@@ -622,26 +637,33 @@ public class ClearSightImageProcessor {
                     if (mCallback != null) {
                         final Image bayerImage = mBayerImages.poll();
                         final Image monoImage = mMonoImages.poll();
-                        new Thread(new Runnable() {
-                            public void run() {
-                                imwriteBayer(bayerImage);
-                                bayerImage.close();
+                        if (bayerImage != null && monoImage != null) {
+                            mkdir(Environment.getExternalStorageDirectory().getPath() + "/DCIM/Camera/raw");
+                            new Thread(new Runnable() {
+                                public void run() {
+                                    imwriteBayer(bayerImage);
+                                    bayerImage.close();
 
-                            }
-                        }).start();
-                        new Thread(new Runnable() {
-                            public void run() {
-                                imwriteMono(monoImage);
-                                monoImage.close();
+                                }
+                            }).start();
+                            new Thread(new Runnable() {
+                                public void run() {
+                                    imwriteMono(monoImage);
+                                    monoImage.close();
 
-                            }
-                        }).start();
+                                }
+                            }).start();
 //                        imwriteBayer(bayerImage);
 //                        bayerImage.close();
 //                        imwriteMono(monoImage);
 //                        monoImage.close();
-                        mCallback.onClearSightSuccess(mBayerData);
+                            mCallback.onClearSightSuccess(mBayerData);
+                        }
+                        else {
+                                mCallback.onClearSightFailure(null);
+                        }
                     }
+
                 }
             }
             else {
