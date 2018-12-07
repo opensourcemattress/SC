@@ -47,6 +47,7 @@ import android.location.Location;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.ImageWriter;
+import android.media.MediaScannerConnection;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -85,6 +86,8 @@ import com.android.camera.util.CameraUtil;
 import com.android.camera.util.PersistUtil;
 
 import android.util.Size;
+
+import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
 
 public class PostProcessor{
 
@@ -153,7 +156,7 @@ public class PostProcessor{
 
     public boolean isZSLEnabled() {
         return mUseZSL;
-//        return false;
+        //        return false;
 
     }
 
@@ -426,15 +429,15 @@ public class PostProcessor{
         mCameraDevice = cameraDevice;
         mCaptureSession = captureSession;
         if(mUseZSL) {
-            mImageWriter = ImageWriter.newInstance(captureSession.getInputSurface(), mMaxRequiredImageNum);
+//            mImageWriter = ImageWriter.newInstance(captureSession.getInputSurface(), mMaxRequiredImageNum);
         }
     }
 
     public void onImageReaderReady(ImageReader imageReader, Size maxSize, Size pictureSize) {
         mImageReader = imageReader;
         if(mUseZSL) {
-            mZSLReprocessImageReader = ImageReader.newInstance(pictureSize.getWidth(), pictureSize.getHeight(), ImageFormat.JPEG, mMaxRequiredImageNum);
-            mZSLReprocessImageReader.setOnImageAvailableListener(processedImageAvailableListener, mHandler);
+//            mZSLReprocessImageReader = ImageReader.newInstance(pictureSize.getWidth(), pictureSize.getHeight(), ImageFormat.JPEG, mMaxRequiredImageNum);
+//            mZSLReprocessImageReader.setOnImageAvailableListener(processedImageAvailableListener, mHandler);
         }
     }
 
@@ -454,7 +457,25 @@ public class PostProcessor{
         }
         if (imageItem != null) {
             if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
-            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
+
+            long captureStartTime = System.currentTimeMillis();
+            mNamedImages.nameNewImage(captureStartTime);
+            PhotoModule.NamedImages.NamedEntity name = mNamedImages.getNextNameEntity();
+            final String title = (name == null) ? null : name.title;
+
+            final Image image = imageItem.getImage();
+
+            new Thread(new Runnable() {
+                public void run() {
+
+                    String filename = "mnt/sdcard/DCIM/Camera/raw/" + title + ".png";
+                    ClearSightImageProcessor.imwriteMono(image, filename);
+                    String[] files = new String[]{filename};
+
+                    MediaScannerConnection.scanFile(mActivity, files, null, null);
+                }}).start();
+            //            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
+
             if (mSaveRaw && imageItem.getRawImage() != null) {
                 onRawImageToProcess(imageItem.getRawImage());
             }
@@ -686,6 +707,7 @@ public class PostProcessor{
         } else {
             mUseZSL = true;
         }
+        mUseZSL = true;
         Log.d(TAG,"ZSL is "+mUseZSL);
         startBackgroundThread();
         if(mUseZSL) {

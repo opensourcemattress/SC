@@ -73,6 +73,7 @@ import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.media.ImageWriter;
+import android.media.MediaScannerConnection;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -260,7 +261,7 @@ public class ClearSightImageProcessor {
         int maxWidth = maxSize.getWidth();
         int maxHeight = maxSize.getHeight();
         mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
-        mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
+//        mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
 //        mEncodeImageReader[CAM_TYPE_BAYER] = createEncodeImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
 //        mEncodeImageReader[CAM_TYPE_MONO] = createEncodeImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
 
@@ -542,6 +543,38 @@ public class ClearSightImageProcessor {
 //        }
 //    }
 
+
+    public static void imwriteMono(Image image, String filename) {
+        String fNameSuffix = "_m";
+        byte[] correctedData = CaptureModule.getCorrectedBufferFromYuvImage(image, false);
+        Mat test = new Mat(3000,4000, CvType.CV_8U);
+        test.put(0, 0, correctedData);
+
+//        String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
+//                    mMediaSaveService.addRawImage(getJpegData(image), mNamedEntity.title ,"raw");
+
+        Imgcodecs.imwrite(filename, test);
+
+    }
+
+    public static void writeJPEG(Image image, String filename) {
+        File file = new File(filename);
+        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+        FileOutputStream output = null;
+        buffer.rewind();
+        byte [] bytes = new byte[buffer.remaining()];
+        buffer.get(bytes); // copies image from buffer to byte array
+        try {
+            output = new FileOutputStream(file);
+            output.write(bytes);	// write the byte array to file
+            output.close();
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private class ImageProcessHandler extends Handler {
 //        private ArrayDeque<ReprocessableImage> mBayerFrames = new ArrayDeque<ReprocessableImage>(
 //                mNumBurstCount);
@@ -616,17 +649,25 @@ public class ClearSightImageProcessor {
         }
 
         private void checkAndOver(boolean byTimeout){
-            boolean bothTaken = mNumImagesToProcess[CAM_TYPE_BAYER] == 0 && mNumImagesToProcess[CAM_TYPE_MONO] == 0;
+            boolean bothTaken = mNumImagesToProcess[CAM_TYPE_BAYER] == 0;
+//            boolean bothTaken = mNumImagesToProcess[CAM_TYPE_BAYER] == 0 && mNumImagesToProcess[CAM_TYPE_MONO] == 0;
             if (bothTaken ) {
                 if (!byTimeout) {
                     if (mCallback != null) {
-                        Image bayerImage = mBayerImages.poll();
-                        Image monoImage = mMonoImages.poll();
-                        imwriteBayer(bayerImage);
-                        imwriteMono(monoImage);
-                        bayerImage.close();
-                        monoImage.close();
-                        mCallback.onClearSightSuccess(mBayerData);
+                        final Image bayerImage = mBayerImages.poll();
+//                        Image monoImage = mMonoImages.poll();
+
+                        new Thread(new Runnable() {
+                                public void run() {
+                                    imwriteBayer(bayerImage);
+                                    bayerImage.close();
+
+                                }
+                                }).start();
+
+//                        imwriteMono(monoImage);
+//                        monoImage.close();
+                        mCallback.onClearSightSuccess(null);
                     }
                 }
             }
@@ -675,6 +716,7 @@ public class ClearSightImageProcessor {
                 processNewCaptureEvent(msg);
 //            }
         }
+
         private void imwriteBayer(Image image) {
             String fNameSuffix = "_c";
 
@@ -687,21 +729,22 @@ public class ClearSightImageProcessor {
             String title = (mNamedEntity == null) ? null : mNamedEntity.title;
 
             String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title + fNameSuffix + ".jpg";
-            File file = new File("/mnt/sdcard/DCIM/Camera/raw/", title + fNameSuffix + ".jpg");
-            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-            FileOutputStream output = null;
-            buffer.rewind();
-            bytes = new byte[buffer.remaining()];
-            buffer.get(bytes); // copies image from buffer to byte array
-            try {
-                output = new FileOutputStream(file);
-                output.write(bytes);	// write the byte array to file
-                output.close();
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            writeJPEG(image, filename);
+//            File file = new File(filename);
+//            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+//            FileOutputStream output = null;
+//            buffer.rewind();
+//            bytes = new byte[buffer.remaining()];
+//            buffer.get(bytes); // copies image from buffer to byte array
+//            try {
+//                output = new FileOutputStream(file);
+//                output.write(bytes);	// write the byte array to file
+//                output.close();
+//            } catch (FileNotFoundException e) {
+//                e.printStackTrace();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
 
             values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpg");
             values.put(MediaStore.MediaColumns.DATA, filename);
@@ -709,24 +752,30 @@ public class ClearSightImageProcessor {
 
         }
 
-        private void imwriteMono(Image image) {
+        private void saveMono(Image image) {
             String fNameSuffix = "_m";
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
-
-            byte[] correctedData = CaptureModule.getCorrectedBufferFromYuvImage(image, false);
-            Mat test = new Mat(3000,4000, CvType.CV_8U);
-            test.put(0, 0, correctedData);
-
             String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
-//                    mMediaSaveService.addRawImage(getJpegData(image), mNamedEntity.title ,"raw");
-
-            Imgcodecs.imwrite(filename, test);
-
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-            values.put(MediaStore.MediaColumns.DATA, filename);
-            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            imwriteMono(image, filename);
         }
+
+//        private void imwriteMono(Image image) {
+//            String fNameSuffix = "_m";
+//            ContentValues values = new ContentValues();
+//            values.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
+//
+//            byte[] correctedData = CaptureModule.getCorrectedBufferFromYuvImage(image, false);
+//            Mat test = new Mat(3000,4000, CvType.CV_8U);
+//            test.put(0, 0, correctedData);
+//
+//            String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
+////                    mMediaSaveService.addRawImage(getJpegData(image), mNamedEntity.title ,"raw");
+//
+//            Imgcodecs.imwrite(filename, test);
+//
+//            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+//            values.put(MediaStore.MediaColumns.DATA, filename);
+//            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+//        }
 
         private void processNewCaptureEvent(Message msg) {
 //            kickTimeout();
