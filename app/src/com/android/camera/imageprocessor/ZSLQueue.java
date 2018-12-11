@@ -31,11 +31,14 @@ package com.android.camera.imageprocessor;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.media.Image;
+import android.media.MediaScannerConnection;
 import android.util.Log;
 
 import com.android.camera.CaptureModule;
 import com.android.camera.util.PersistUtil;
 import android.os.SystemProperties;
+
+import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
 
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -63,6 +66,47 @@ public class ZSLQueue {
             mMetaHead = 0;
             mModule = module;
         }
+    }
+
+    static {
+        System.loadLibrary("tv");
+    }
+
+    public native long tvNative(byte[] imData, int imH, int imW);
+
+
+
+    private long tv(Image image) {
+
+        long result = 0;
+
+        long tvH = 0;
+        long tvW = 0;
+
+        int imW = image.getWidth();
+        int imH = image.getHeight();
+
+        byte[] imBytes = CaptureModule.getJpegData(image);
+
+//        for (int i=0; i<imH; i++) {
+//      	  for (int j=0; j<imW; j+=2) {
+//      	       tvW += Math.abs((int)(imBytes[i * imW + j] + 128) - (int)(imBytes[i * imW + j + 1] + 128));
+//      	  }
+//        }
+//
+//        for (int i = 0; i < imH; i+=2) {
+//	        for (int j = 0; j < imW; j++) {
+//	            tvH += Math.abs((int)(imBytes[i * imW + j] + 128) - (int)(imBytes[(i + 1) * imW + j] + 128));
+//	        }
+//        }
+
+        result = tvH + tvW;
+
+        long result2 = tvNative(imBytes, imH, imW);
+
+        Log.d(TAG, "YAY");
+
+        return result2;
     }
 
     private int findMeta(long timestamp, int index) {
@@ -176,6 +220,56 @@ public class ZSLQueue {
 
         if(DEBUG_QUEUE) Log.d(TAG, "Meta: " + lastIndex + " " + metadata.get(CaptureResult.SENSOR_TIMESTAMP));
     }
+
+    public ImageItem tryToGetBestItem() {
+        synchronized (mLock) {
+            long[] tvs = new long[mBuffer.length];
+            long bestTV = -1L;
+            int bestIndex = 0;
+            int index = mImageHead;
+            ImageItem item;
+            int i = 0;
+            do {
+                item = mBuffer[index];
+                Image image = item.getImage();
+
+                if (image != null) {
+                    long currTV = tv(image);
+//                    new Thread(new Runnable() {
+//                        public void run() {
+
+                            String filename = "mnt/sdcard/DCIM/Camera/raw/IM_" + String.valueOf(i) + "_" + String.valueOf(index) + "_"  +String.valueOf(currTV) +  ".png";
+                            ClearSightImageProcessor.imwriteMono(image, filename);
+//                            String[] files = new String[]{filename};
+
+//                            MediaScannerConnection.scanFile(mActivity, files, null, null);
+//                        }}).start();
+                    tvs[index] = currTV;
+                }
+                else
+                    tvs[index] = -1L;
+//                if (item != null && item.isValid() && checkImageRequirement(item.getMetadata())) {
+//                    mBuffer[index] = null;
+//                    return item;
+//                }
+                if (tvs[index] > bestTV) {
+                    bestTV = tvs[index];
+                    bestIndex = index;
+                }
+                index--;
+                i++;
+                if (index < 0) index = mBuffer.length - 1;
+            } while (index != mImageHead);
+
+            item = mBuffer[bestIndex];
+            mBuffer[bestIndex] = null;
+
+            return item;
+
+        }
+//        return null;
+    }
+
 
     public ImageItem tryToGetMatchingItem() {
         synchronized (mLock) {

@@ -1471,9 +1471,15 @@ public class CaptureModule implements CameraModule, PhotoController,
         if (isBackCamera()) {
             switch (getCameraMode()) {
                 case DUAL_MODE:
-                    if(takeZSLPicture(MONO_ID)) {
+//                    if(takeZSLPicture(MONO_ID)) {
 //                        return;
-                    }
+//                    }
+                    new Thread(new Runnable() {
+                        public void run() {
+                            takeZSLPicture(MONO_ID);
+                        }
+                    }).start();
+
                     captureStillPicture(BAYER_ID);
 //                    lockFocus(BAYER_ID);
 //                    lockFocus(MONO_ID);

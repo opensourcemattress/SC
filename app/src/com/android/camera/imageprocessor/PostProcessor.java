@@ -150,6 +150,7 @@ public class PostProcessor{
     private int mPendingContinuousRequestCount = 0;
     public int mMaxRequiredImageNum;
 
+
     public int getMaxRequiredImageNum() {
         return mMaxRequiredImageNum;
     }
@@ -443,7 +444,9 @@ public class PostProcessor{
 
     public boolean takeZSLPicture() {
         mController.setJpegImageData(null);
-        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
+//        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
+        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItem();
+
         if(mController.getPreviewCaptureResult() == null ||
                 mController.getPreviewCaptureResult().get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
             if(DEBUG_ZSL) Log.d(TAG, "Flash required image");
