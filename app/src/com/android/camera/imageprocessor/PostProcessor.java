@@ -445,7 +445,8 @@ public class PostProcessor{
     public boolean takeZSLPicture() {
         mController.setJpegImageData(null);
 //        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
-        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItem();
+//        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItem();
+        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItemParallel();
 
         if(mController.getPreviewCaptureResult() == null ||
                 mController.getPreviewCaptureResult().get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
@@ -470,8 +471,7 @@ public class PostProcessor{
 
             new Thread(new Runnable() {
                 public void run() {
-
-                    String filename = "mnt/sdcard/DCIM/Camera/raw/" + title + ".png";
+                    String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_m.png";
                     ClearSightImageProcessor.imwriteMono(image, filename);
                     String[] files = new String[]{filename};
 
