@@ -110,7 +110,7 @@ public class ClearSightImageProcessor {
 //    private static final String PERSIST_DUMP_DEPTH_KEY = "persist.camera.cs.dumpdepth";
 
     private static final long DEFAULT_TIMESTAMP_THRESHOLD_MS = 10;
-    private static final int DEFAULT_IMAGES_TO_BURST = 2;
+    private static final int DEFAULT_IMAGES_TO_BURST = 8;
     private static final int DEFAULT_CS_TIMEOUT_MS = 300;
 
     private static final long MIN_MONO_AREA = 1900000;  // ~1.9 MP
@@ -182,7 +182,111 @@ public class ClearSightImageProcessor {
 
     private Context mContext;
 
+    static {
+        System.loadLibrary("tv");
+    }
+    public native long tvNative(byte[] imData, int imH, int imW);
+    private long [] mTvValues;
+    private int mTvProcessedCount;
+    private Object mLockWHY = new Object();
+    private Object mTvLock = new Object();
 
+    private Image[] mMonoBuffer;
+    private Image[] mColorBuffer;
+    private int mMonoIndex = 0;
+    private int mColorIndex = 0;
+
+    private Object mMonoIndexLock = new Object();
+    private Object mColorIndexLock = new Object();
+
+    private void resetMonoBuffers () {
+        for (int i=0; i<mNumBurstCount; i++) {
+            if (mMonoBuffer[i] != null) {
+                mMonoBuffer[i].close();
+                mMonoBuffer[i] = null;
+            }
+        }
+        synchronized (mMonoIndexLock) {
+            mMonoIndex = 0;
+        }
+    }
+
+    private void resetColorBuffer () {
+        for (int i=0; i<mNumBurstCount; i++) {
+            if (mColorBuffer[i] != null) {
+                mColorBuffer[i].close();
+                mColorBuffer[i] = null;
+            }
+        }
+        synchronized (mColorIndexLock) {
+            mColorIndex = 0;
+        }
+    }
+
+    private void resetTv() {
+        for (int i=0; i< mTvValues.length; i++)
+            mTvValues[i] = -1;
+
+        synchronized (mTvLock) {
+            mTvProcessedCount = 0;
+        }
+    }
+
+    private void tvItem(Image image, int itemIndex) {
+        if (image != null) {
+            int imW = image.getWidth();
+            int imH = image.getHeight();
+
+            byte[] imBytes = CaptureModule.getJpegData(image);
+            mTvValues[itemIndex] = tvNative(imBytes, imH, imW);
+        }
+        else
+            mTvValues[itemIndex] = -1;
+
+        synchronized (mTvLock) {
+            mTvProcessedCount++;
+        }
+    }
+
+
+    private int getBestIndex() {
+        int bestIndex = 0;
+
+//        synchronized (mLockWHY) {
+            for (int i = 0; i < mNumBurstCount; i++) {
+                final Image currImage = mMonoBuffer[i];
+                final int currIndex = i;
+                new Thread(new Runnable() {
+                    public void run() {
+                        tvItem(currImage, currIndex);
+                    }
+                }).start();
+            }
+
+            int test = 0;
+            do {
+                synchronized (mTvLock) {
+                    test = mTvProcessedCount;
+                    try {
+                        mTvLock.wait(50);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+
+            } while (test < mNumBurstCount);
+
+            long bestValue = -1;
+            for (int i = 0; i < mNumBurstCount; i++) {
+                if (mTvValues[i] > bestValue) {
+                    bestIndex = i;
+                    bestValue = mTvValues[i];
+                }
+            }
+//        }
+        resetTv();
+        return bestIndex;
+    }
     private static ClearSightImageProcessor mInstance;
 
     private ClearSightImageProcessor() {
@@ -194,7 +298,7 @@ public class ClearSightImageProcessor {
         mNumBurstCount = SystemProperties.getInt(PERSIST_BURST_COUNT_KEY, DEFAULT_IMAGES_TO_BURST);
         Log.d(TAG, "mNumBurstCount: " + mNumBurstCount);
 
-        mNumFrameCount = mNumBurstCount - 1;
+        mNumFrameCount = mNumBurstCount;
         Log.d(TAG, "mNumFrameCount: " + mNumFrameCount);
 
         mDumpImages = SystemProperties.getBoolean(PERSIST_DUMP_FRAMES_KEY, false);
@@ -208,6 +312,11 @@ public class ClearSightImageProcessor {
 
         mCsTimeout = SystemProperties.getInt(PERSIST_CS_TIMEOUT_KEY, DEFAULT_CS_TIMEOUT_MS);
         Log.d(TAG, "mCsTimeout: " + mCsTimeout);
+
+        mMonoBuffer = new Image[mNumBurstCount];
+        mColorBuffer = new Image[mNumBurstCount];
+        mTvValues = new long[mNumBurstCount];
+        resetTv();
 
     }
 
@@ -467,18 +576,20 @@ public class ClearSightImageProcessor {
             }
         };
 
-//        List<CaptureRequest> burstList = new ArrayList<CaptureRequest>();
-        requestBuilder.addTarget(mImageReader[cam].getSurface());
-//        for (int i = 0; i < mNumBurstCount; i++) {
+        List<CaptureRequest> burstList = new ArrayList<CaptureRequest>();
+//        requestBuilder.addTarget(mImageReader[cam].getSurface());
+        for (int i = 0; i < mNumBurstCount; i++) {
             requestBuilder.setTag(new Object());
+            requestBuilder.addTarget(mImageReader[cam].getSurface());
+
             CaptureRequest request = requestBuilder.build();
-//            burstList.add(request);
-//        }
+            burstList.add(request);
+        }
 
         mImageProcessHandler.obtainMessage(MSG_START_CAPTURE, cam, mNumFrameCount, 0).sendToTarget();
-        session.capture(request, captureCallback, captureCallbackHandler);
+//        session.capture(request, captureCallback, captureCallbackHandler);
 
-//        session.captureBurst(burstList, captureCallback, captureCallbackHandler);
+        session.captureBurst(burstList, captureCallback, captureCallbackHandler);
     }
 
     private boolean isClosing() {
@@ -635,21 +746,34 @@ public class ClearSightImageProcessor {
             if (bothTaken ) {
                 if (!byTimeout) {
                     if (mCallback != null) {
-                        final Image bayerImage = mBayerImages.poll();
-                        final Image monoImage = mMonoImages.poll();
+
+                        int bestIndex = getBestIndex();
+                        final Image bayerImage = mColorBuffer[bestIndex];
+                        final Image monoImage = mMonoBuffer[bestIndex];
+
+//                        final Image bayerImage = mBayerImages.poll();
+//                        final Image monoImage = mMonoImages.poll();
+
+
+
+
+
                         if (bayerImage != null && monoImage != null) {
                             mkdir(Environment.getExternalStorageDirectory().getPath() + "/DCIM/Camera/raw");
                             new Thread(new Runnable() {
                                 public void run() {
                                     imwriteBayer(bayerImage);
-                                    bayerImage.close();
+//                                    bayerImage.close();
+                                    resetColorBuffer();
 
                                 }
                             }).start();
+
                             new Thread(new Runnable() {
                                 public void run() {
                                     imwriteMono(monoImage);
-                                    monoImage.close();
+                                    resetMonoBuffers();
+//                                    monoImage.close();
 
                                 }
                             }).start();
@@ -658,9 +782,13 @@ public class ClearSightImageProcessor {
 //                        imwriteMono(monoImage);
 //                        monoImage.close();
                             mCallback.onClearSightSuccess(mBayerData);
+//                            resetBuffers();
                         }
                         else {
-                                mCallback.onClearSightFailure(null);
+                            mCallback.onClearSightFailure(null);
+                            resetMonoBuffers();
+                            resetColorBuffer();
+//                            resetBuffers();
                         }
                     }
 
@@ -695,7 +823,7 @@ public class ClearSightImageProcessor {
 
         private void kickTimeout() {
             removeMessages(MSG_END_CAPTURE);
-            sendEmptyMessageDelayed(MSG_END_CAPTURE, mCsTimeout);
+            sendEmptyMessageDelayed(MSG_END_CAPTURE, 10000);
         }
 
         private void processImg(Message msg) {
@@ -778,24 +906,36 @@ public class ClearSightImageProcessor {
                 return;
             }
 
-            ArrayDeque<Image> imageQueue;
+//            ArrayDeque<Image> imageQueue;
 //            ArrayDeque<TotalCaptureResult> resultQueue;
 //            ArrayDeque<ReprocessableImage> frameQueue;
             // push image onto queue
-            if (msg.arg1 == CAM_TYPE_BAYER) {
-                imageQueue = mBayerImages;
+//            if (msg.arg1 == CAM_TYPE_BAYER) {
+//                imageQueue = mBayerImages;
 //                resultQueue = mBayerCaptureResults;
 //                frameQueue = mBayerFrames;
-            } else {
-                imageQueue = mMonoImages;
+//            } else {
+//                imageQueue = mMonoImages;
 //                resultQueue = mMonoCaptureResults;
 //                frameQueue = mMonoFrames;
-            }
+//            }
 
             if(msg.what == MSG_NEW_IMG) {
                 Log.d(TAG, "processNewCaptureEvent - newImg: " + msg.arg1);
                 Image image = (Image) msg.obj;
-                imageQueue.add(image);
+                if (msg.arg1 == CAM_TYPE_BAYER) {
+                    synchronized (mColorIndexLock) { // do we really need locks?
+                        mColorBuffer[mColorIndex] = (Image) msg.obj;
+                        mColorIndex += 1;
+                    }
+                }
+                else {
+                    synchronized (mMonoIndexLock) { // do we really need locks?
+                        mMonoBuffer[mMonoIndex] = (Image) msg.obj;
+                        mMonoIndex += 1;
+                    }
+                }
+//                imageQueue.add(image);
 
 //                boolean isBayer = (msg.arg1 == CAM_TYPE_BAYER);
 //                if (isBayer) {

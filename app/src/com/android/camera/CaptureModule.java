@@ -5018,7 +5018,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         }
     }
 
-    private byte[] getJpegData(Image image) {
+    public static byte[] getJpegData(Image image) {
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
         byte[] bytes = new byte[buffer.remaining()];
         buffer.get(bytes);
