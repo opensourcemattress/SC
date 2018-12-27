@@ -400,7 +400,7 @@ public class ClearSightImageProcessor {
 
         mCaptureSessions[bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO] = session;
 //        mImageWriter[bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO] =
-//                ImageWriter.newInstance(session.getInputSurface(), mNumBurstCount);
+//                ImageWriter.newInstance(sePostProcessorsssion.getInputSurface(), mNumBurstCount);
     }
 
     public CaptureRequest.Builder createCaptureRequest(CameraDevice device) throws CameraAccessException {
@@ -557,6 +557,35 @@ public class ClearSightImageProcessor {
 
     }
 
+    public static void imwriteBayer(Image image, String filename) {
+
+//            mBayerData = bytes;
+
+//            String title = (mNamedEntity == null) ? null : mNamedEntity.title;
+
+        writeJPEG(image, filename);
+//            File file = new File(filename);
+//            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+//            FileOutputStream output = null;
+//            buffer.rewind();
+//            bytes = new byte[buffer.remaining()];
+//            buffer.get(bytes); // copies image from buffer to byte array
+//            try {
+//                output = new FileOutputStream(file);
+//                output.write(bytes);	// write the byte array to file
+//                output.close();
+//            } catch (FileNotFoundException e) {
+//                e.printStackTrace();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+
+//            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpg");
+//            values.put(MediaStore.MediaColumns.DATA, filename);
+//            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
+    }
+
     public static void writeJPEG(Image image, String filename) {
         File file = new File(filename);
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
@@ -659,7 +688,7 @@ public class ClearSightImageProcessor {
 
                         new Thread(new Runnable() {
                                 public void run() {
-                                    imwriteBayer(bayerImage);
+                                    saveColor(bayerImage);
                                     bayerImage.close();
 
                                 }
@@ -717,45 +746,18 @@ public class ClearSightImageProcessor {
 //            }
         }
 
-        private void imwriteBayer(Image image) {
-            String fNameSuffix = "_c";
 
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
-
-            byte[] bytes = getJpegData(image);
-            mBayerData = bytes;
-
-            String title = (mNamedEntity == null) ? null : mNamedEntity.title;
-
-            String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title + fNameSuffix + ".jpg";
-            writeJPEG(image, filename);
-//            File file = new File(filename);
-//            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-//            FileOutputStream output = null;
-//            buffer.rewind();
-//            bytes = new byte[buffer.remaining()];
-//            buffer.get(bytes); // copies image from buffer to byte array
-//            try {
-//                output = new FileOutputStream(file);
-//                output.write(bytes);	// write the byte array to file
-//                output.close();
-//            } catch (FileNotFoundException e) {
-//                e.printStackTrace();
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpg");
-            values.put(MediaStore.MediaColumns.DATA, filename);
-            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-
-        }
 
         private void saveMono(Image image) {
             String fNameSuffix = "_m";
             String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
             imwriteMono(image, filename);
+        }
+
+        private void saveColor(Image image) {
+            String fNameSuffix = "_m";
+            String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format("%s", mNamedEntity.title) + fNameSuffix + ".jpg";
+            imwriteBayer(image, filename);
         }
 
 //        private void imwriteMono(Image image) {

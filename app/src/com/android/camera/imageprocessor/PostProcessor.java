@@ -150,6 +150,7 @@ public class PostProcessor{
     private int mPendingContinuousRequestCount = 0;
     public int mMaxRequiredImageNum;
 
+    public ZSLQueue mSecondZSLQueue;
 
     public int getMaxRequiredImageNum() {
         return mMaxRequiredImageNum;
@@ -159,6 +160,14 @@ public class PostProcessor{
         return mUseZSL;
         //        return false;
 
+    }
+
+    public ZSLQueue getZSLQueue () {
+        return mZSLQueue;
+    }
+
+    public void setSecondZSLQueue(ZSLQueue mSecondZSLQueue) {
+        this.mSecondZSLQueue = mSecondZSLQueue;
     }
 
     public void onStartCapturing() {
@@ -203,6 +212,8 @@ public class PostProcessor{
             return mRawImage;
         }
     }
+
+
 
     private void clearFallOffImage() {
         for(ZSLQueue.ImageItem item: mFallOffImages ) {
@@ -442,14 +453,21 @@ public class PostProcessor{
         }
     }
 
-    public boolean takeZSLPicture() {
+    public boolean takeZSLPicture(CaptureResult previewCaptureResult, boolean isBayer) {
         mController.setJpegImageData(null);
 //        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
 //        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItem();
-        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItemParallel();
+        ZSLQueue.ImageItem imageItem = null;
+        ZSLQueue.ImageItem imageItemBayer = null;
 
-        if(mController.getPreviewCaptureResult() == null ||
-                mController.getPreviewCaptureResult().get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
+//        synchronized (mSecondZSLQueue.getmLock()) {
+            imageItem = mZSLQueue.tryToGetBestItemParallel();
+            TotalCaptureResult res = imageItem.getMetadata();
+//            imageItemBayer = mSecondZSLQueue.tryToGetNearestItem(res);
+//        }
+
+        if(previewCaptureResult == null ||
+                previewCaptureResult.get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
             if(DEBUG_ZSL) Log.d(TAG, "Flash required image");
             imageItem = null;
         }
@@ -459,7 +477,7 @@ public class PostProcessor{
         if (mController.isLongShotActive()) {
             imageItem = null;
         }
-        if (imageItem != null) {
+        if (imageItem != null ) {
             if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
 
             long captureStartTime = System.currentTimeMillis();
@@ -467,16 +485,32 @@ public class PostProcessor{
             PhotoModule.NamedImages.NamedEntity name = mNamedImages.getNextNameEntity();
             final String title = (name == null) ? null : name.title;
 
-            final Image image = imageItem.getImage();
+            final Image imageMono = imageItem.getImage();
+//            final Image imageBayer = imageItemBayer.getImage();
 
-            new Thread(new Runnable() {
-                public void run() {
-                    String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_m.png";
-                    ClearSightImageProcessor.imwriteMono(image, filename);
-                    String[] files = new String[]{filename};
+            if (imageMono != null) {
+                if (isBayer) { //TODO
+                    new Thread(new Runnable() {
+                        public void run() {
+                            String filename = "mnt/sdcard/DCIM/Camera/raw/" + title + "_c.jpg";
+                            ClearSightImageProcessor.imwriteBayer(imageMono, filename);
+                            String[] files = new String[]{filename};
 
-                    MediaScannerConnection.scanFile(mActivity, files, null, null);
-                }}).start();
+                            MediaScannerConnection.scanFile(mActivity, files, null, null);
+                        }
+                    }).start();
+                } else {
+                    new Thread(new Runnable() {
+                        public void run() {
+                            String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_m.png";
+                            ClearSightImageProcessor.imwriteMono(imageMono, filename);
+                            String[] files = new String[]{filename};
+
+                            MediaScannerConnection.scanFile(mActivity, files, null, null);
+                        }
+                    }).start();
+                }
+            }
             //            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
 
             if (mSaveRaw && imageItem.getRawImage() != null) {

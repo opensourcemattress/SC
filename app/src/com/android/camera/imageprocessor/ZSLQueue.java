@@ -54,6 +54,7 @@ public class ZSLQueue {
     private int mImageHead;
     private int mMetaHead;
     private Object mLock = new Object();
+
     private CaptureModule mModule;
     private static final boolean DEBUG_QUEUE  =
             (PersistUtil.getCamera2Debug() == PersistUtil.CAMERA2_DEBUG_DUMP_LOG) ||
@@ -78,7 +79,9 @@ public class ZSLQueue {
     private int mTvProcessedCount = 0;
     private Object mTvLock = new Object();
 
-
+    public Object getmLock() {
+        return mLock;
+    }
 
     private long tv(Image image) {
 
@@ -228,6 +231,8 @@ public class ZSLQueue {
                     lastIndex = mMetaHead;
                     mMetaHead = (mMetaHead + 1) % mBuffer.length;
                 } else if(mBuffer[mMetaHead].getImage().getTimestamp() > timestamp) {
+                    Log.d(TAG, "test");
+                    Log.d(TAG, "test2");
                     //Disard
                 } else {
                     int i = findImage(timestamp, mMetaHead);
@@ -252,67 +257,66 @@ public class ZSLQueue {
     }
 
     public ImageItem tryToGetBestItemParallel() {
-        synchronized (mLock) {
-            int index = mImageHead;
+            synchronized (mLock) { // need to lock second zsl queue
+                int index = mImageHead;
 
-            int totalItemsCount = 0;
-            do {
-                final ImageItem currItem = mBuffer[index];
-                final int currIndex = index;
-                new Thread(new Runnable() {
-                    public void run() {
-                        tvItem(currItem, currIndex);
-                    }}).start();
+                int totalItemsCount = 0;
+                do {
+                    final ImageItem currItem = mBuffer[index];
+                    final int currIndex = index;
+                    new Thread(new Runnable() {
+                        public void run() {
+                            tvItem(currItem, currIndex);
+                        }
+                    }).start();
 
-                index--;
-                totalItemsCount++;
-                if (index < 0) index = mBuffer.length - 1;
-            } while (index != mImageHead);
+                    index--;
+                    totalItemsCount++;
+                    if (index < 0) index = mBuffer.length - 1;
+                } while (index != mImageHead);
 
-            int test = 0;
-            do {
-                try {
-                    wait(50);
+                int test = 0;
+                do {
+                    try {
+                        wait(50);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                    synchronized (mTvLock) {
+                        test = mTvProcessedCount;
+                    }
                 }
-                catch (Exception ex) {
-                    ex.printStackTrace();
+                while (test < mBuffer.length);
+
+
+                int bestIndex = 0;
+                long bestValue = -1;
+                for (int i = 0; i < mTvValues.length; i++) {
+                    if (mTvValues[i] > bestValue) {
+                        bestIndex = i;
+                        bestValue = mTvValues[i];
+                    }
                 }
-                synchronized (mTvLock) {
-                    test = mTvProcessedCount;
-                }
+
+
+                ImageItem item = mBuffer[bestIndex];
+//            ImageItem tmp = tryToGetMatchingItem();
+//            Image tmpImage = tmp.getImage();
+
+//            if (tmpImage != null) {
+//                Date date = new Date(System.currentTimeMillis());
+//                SimpleDateFormat format = new SimpleDateFormat("'IMG'_yyyyMMdd_HHmmss");
+//                String imName = format.format(date);
+//                ClearSightImageProcessor.imwriteMono(tmpImage, "/mnt/sdcard/DCIM/Camera/raw/." + imName + "_orig.png");
+//            }
+
+                mBuffer[bestIndex] = null;
+                resetTv();
+
+
+                return item;
+
             }
-            while (test < mBuffer.length) ;
-
-
-            int bestIndex = 0;
-            long bestValue = -1;
-            for (int i=0; i<mTvValues.length; i++) {
-                if (mTvValues[i] > bestValue) {
-                    bestIndex = i;
-                    bestValue = mTvValues[i];
-                }
-            }
-
-
-
-            ImageItem item = mBuffer[bestIndex];
-            ImageItem tmp = tryToGetMatchingItem();
-            Image tmpImage = tmp.getImage();
-
-            if (tmpImage != null) {
-                Date date = new Date(System.currentTimeMillis());
-                SimpleDateFormat format = new SimpleDateFormat("'IMG'_yyyyMMdd_HHmmss");
-                String imName = format.format(date);
-                ClearSightImageProcessor.imwriteMono(tmpImage, "/mnt/sdcard/DCIM/Camera/raw/." + imName + "_orig.png");
-            }
-
-            mBuffer[bestIndex] = null;
-            resetTv();
-
-
-            return item;
-
-        }
 //        return null;
     }
 
@@ -381,6 +385,28 @@ public class ZSLQueue {
             } while (index != mImageHead);
         }
         return null;
+    }
+
+    public ImageItem tryToGetNearestItem(TotalCaptureResult result) {
+        synchronized (mLock) {
+            long anchorTime = result.get(CaptureResult.SENSOR_TIMESTAMP);
+            int index = mImageHead;
+            int bestIndex = 0;
+            long bestDiff = 10000000L;
+            for (int i=0; i<mBuffer.length; i++) {
+                if (mBuffer[i] != null && mBuffer[i].isValid()) {
+                    long currDiff = Math.abs(mBuffer[i].getMetadata().get(CaptureResult.SENSOR_TIMESTAMP) - anchorTime);
+                    if (currDiff < bestDiff) {
+                        bestDiff = currDiff;
+                        bestIndex = i;
+                    }
+                }
+            }
+            ImageItem item = mBuffer[bestIndex];
+            mBuffer[bestIndex] = null;
+            return item;
+        }
+//        return null;
     }
 
     public void onClose() {
