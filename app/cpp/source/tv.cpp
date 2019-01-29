@@ -17,8 +17,14 @@ Java_com_android_camera_imageprocessor_ZSLQueue_tvNative(
      long tvW = 0;
      
      jbyte* imBytes_jbyte = env->GetByteArrayElements(imBytesJNI, NULL);
-
+     jint len = env->GetArrayLength(imBytesJNI);
+     if (len < imH*imW)
+     {
+         int test = 0;
+         return -1;
+     }
      unsigned char* imBytes = (unsigned char*)imBytes_jbyte;
+
 
      for (int i=0; i<imH; i++) {
       	  for (int j=0; j<imW; j+=2) {

@@ -40,7 +40,7 @@ public class FocusStateListener {
         mUI = ui;
     }
 
-    public void onFocusStatusUpdate(int focusState) {
+    public void onFocusStatusUpdate(int focusState, int id) {
         switch (focusState) {
             case CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN:
                 Log.d(TAG, "CONTROL_AF_STATE_ACTIVE_SCAN onFocusStarted");

@@ -45,9 +45,12 @@ import java.util.List;
 import org.codeaurora.snapcam.filter.ClearSightNativeEngine.CamSystemCalibrationData;
 //import org.codeaurora.snapcam.filter.ClearSightNativeEngine.ClearsightImage;
 //import org.codeaurora.snapcam.filter.DDMNativeEngine;
+
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+//import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
+import org.opencv.imgproc.Imgproc;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -178,8 +181,13 @@ public class ClearSightImageProcessor {
 
     private Context mContext;
 
+    private static native int getCorrectedYUVData(byte[] yBuffer, byte[] vuBuffer, byte[] resultBuffer);
 
     private static ClearSightImageProcessor mInstance;
+
+    static {
+        System.loadLibrary("imwrite_yuv");
+    }
 
     private ClearSightImageProcessor() {
         mNamedImages = new NamedImages();
@@ -218,6 +226,7 @@ public class ClearSightImageProcessor {
         if(mInstance == null) {
             createInstance();
         }
+
         return mInstance;
     }
 
@@ -261,7 +270,7 @@ public class ClearSightImageProcessor {
         int maxWidth = maxSize.getWidth();
         int maxHeight = maxSize.getHeight();
         mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
-//        mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
+        mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
 //        mEncodeImageReader[CAM_TYPE_BAYER] = createEncodeImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
 //        mEncodeImageReader[CAM_TYPE_MONO] = createEncodeImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
 
@@ -545,16 +554,10 @@ public class ClearSightImageProcessor {
 
 
     public static void imwriteMono(Image image, String filename) {
-        String fNameSuffix = "_m";
         byte[] correctedData = CaptureModule.getCorrectedBufferFromYuvImage(image, false);
         Mat test = new Mat(3000,4000, CvType.CV_8U);
         test.put(0, 0, correctedData);
-
-//        String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
-//                    mMediaSaveService.addRawImage(getJpegData(image), mNamedEntity.title ,"raw");
-
         Imgcodecs.imwrite(filename, test);
-
     }
 
     public static void imwriteBayer(Image image, String filename) {
@@ -1710,6 +1713,75 @@ public class ClearSightImageProcessor {
         YuvImage yuv = createYuvImage(image);
         String path = Storage.generateFilepath(title, "yuv");
         Storage.writeFile(path, yuv.getYuvData(), null, "yuv");
+    }
+
+    public static void saveDebugImageAsNV21withStringName(Image image, String title) {
+        if(image.getFormat() != ImageFormat.YUV_420_888) {
+            Log.d(TAG, "saveDebugImageAsNV21 - invalid param");
+        }
+
+        YuvImage yuv = createYuvImage(image);
+        String path = Storage.generateFilepath(title, "yuv");
+        Storage.writeFile(path, yuv.getYuvData(), null, "yuv");
+    }
+
+    public static int imwriteYUVimage(Image image, String imagePath) {
+        if (image == null) {
+            return -1;
+        }
+
+        int imH = 3000;
+        int imW = 4000;
+
+        // -32 and +32 may be because of some internal bug
+        int yLenght = 12095968; // 4032 * 3000 - 32
+        int vuLenght = 6048032; // 4032 * 1500 + 32
+
+
+        // it must be easier to write image in native code
+        Plane[] planes = image.getPlanes();
+
+        int[] strides = new int[] {imW, imW};
+        ByteBuffer yBuffer = planes[0].getBuffer();
+        ByteBuffer vuBuffer = planes[2].getBuffer();
+        int sizeY = yBuffer.capacity();
+        int sizeVU = vuBuffer.capacity();
+//        int stride = image.getPlanes()[0].getRowStride();
+//        int height = image.getHeight();
+
+        byte[] yData = new byte[yLenght];
+        yBuffer.rewind();
+        yBuffer.get(yData, 0, sizeY);
+
+        byte[] vuData = new byte[vuLenght];
+
+        vuBuffer.rewind();
+        vuBuffer.get(vuData, 0, sizeVU);
+
+        byte[] imageData = new byte[imH*imW + (imH*imW)/2];
+
+        long begin = System.currentTimeMillis();
+
+        getCorrectedYUVData(yData, vuData, imageData);
+
+        long end = System.currentTimeMillis() - begin;
+
+        YuvImage yuvImage = new YuvImage(imageData, ImageFormat.NV21, imW,
+                imH, strides);
+
+        FileOutputStream fileOutputStream = null;
+        try {
+            fileOutputStream = new FileOutputStream(imagePath);
+            yuvImage.compressToJpeg(new Rect(0, 0, imW, imH), 90, fileOutputStream);
+            fileOutputStream.close();
+        }
+        catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return 0;
     }
 
     public static YuvImage createYuvImage(Image image) {

@@ -57,9 +57,11 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++11 -lz -fopenmp  -frtti -O3"
-                arguments '-DANDROID_TOOLCHAIN=gcc'
-                abiFilters 'armeabi-v7a','arm64-v8a'
+                cppFlags "-std=c++11 -lz -fopenmp  -frtti -O3 -I" + file("cpp/include").absolutePath
+                //arguments '-DANDROID_TOOLCHAIN=gcc' '-DANDROID_STL=gnustl_static'
+                arguments '-DANDROID_STL=gnustl_static'
+
+                abiFilters 'arm64-v8a'
             }
         }
     }
@@ -67,7 +69,7 @@ android {
 
     sourceSets {
         main {
-            jni.srcDirs = ['cpp']
+            jni.srcDirs = ['cpp/source']
             manifest.srcFile 'AndroidManifest.xml'
             java.srcDirs = ['src']
             renderscript.srcDirs = ['rs']

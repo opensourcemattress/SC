@@ -18,7 +18,7 @@ add_library( # Sets the name of the library.
              # Provides a relative path to your source file(s).
              # Associated headers in the same location as their source
              # file are automatically included.
-             cpp/tv.cpp )
+             cpp/source/tv.cpp )
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because system libraries are included in the search path by
@@ -26,15 +26,28 @@ add_library( # Sets the name of the library.
 # you want to add. CMake verifies that the library exists before
 # completing its build.
 
+
 #include_directories( ${CMAKE_SOURCE_DIR}/jni )
 
+add_library( # Sets the name of the library.
+             imwrite_yuv
+
+             # Sets the library as a shared library.
+             SHARED
+
+             # Provides a relative path to your source file(s).
+             # Associated headers in the same location as their source
+             # file are automatically included.
+             cpp/source/imwrite_yuv.cpp )
 
 
-#add_library( lib_opencv SHARED IMPORTED )
-#set_target_properties(lib_opencv PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/src/main/jniLibs/${ANDROID_ABI}/libopencv_java3.so)
+add_library( lib_opencv SHARED IMPORTED )
+set_target_properties(lib_opencv PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/libs/${ANDROID_ABI}/libopencv_java3.so)
 
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O3")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
-#include_directories( ${CMAKE_SOURCE_DIR}/jni/include)
+include_directories( cpp/include)
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -56,9 +69,12 @@ find_library( # Sets the name of the path variable.
 # build script, prebuilt third-party libraries, or system libraries.
 
 target_link_libraries( # Specifies the target library.
+                       imwrite_yuv
                        tv
-                       #lib_opencv
+
+                       lib_opencv
 
                        # Links the target library to the log library
                        # included in the NDK.
                        ${log-lib} )
+
