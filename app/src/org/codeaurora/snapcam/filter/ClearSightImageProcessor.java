@@ -133,6 +133,8 @@ public class ClearSightImageProcessor {
 
     private static final int CAM_TYPE_BAYER = 0;
     private static final int CAM_TYPE_MONO = 1;
+    private static final int CAM_TYPE_MONO_YUV = 2;
+
     private static final int NUM_CAM = 2;
 
     private static CameraCharacteristics.Key<byte[]> OTP_CALIB_BLOB =
@@ -145,7 +147,7 @@ public class ClearSightImageProcessor {
                     byte[].class);
 
     private NamedImages mNamedImages;
-    private ImageReader[] mImageReader = new ImageReader[NUM_CAM];
+    private ImageReader[] mImageReader = new ImageReader[NUM_CAM + 1];
 //    private ImageReader[] mEncodeImageReader = new ImageReader[NUM_CAM];
 //    private ImageWriter[] mImageWriter = new ImageWriter[NUM_CAM];
     private float mFinalPictureRatio;
@@ -266,6 +268,8 @@ public class ClearSightImageProcessor {
         int maxHeight = maxSize.getHeight();
         mImageReader[CAM_TYPE_BAYER] = createImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
         mImageReader[CAM_TYPE_MONO] = createImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
+        mImageReader[CAM_TYPE_MONO_YUV] = createImageReader(CAM_TYPE_MONO_YUV, maxWidth, maxHeight);
+
 //        mEncodeImageReader[CAM_TYPE_BAYER] = createEncodeImageReader(CAM_TYPE_BAYER, maxWidth, maxHeight);
 //        mEncodeImageReader[CAM_TYPE_MONO] = createEncodeImageReader(CAM_TYPE_MONO, maxWidth, maxHeight);
 
@@ -388,6 +392,9 @@ public class ClearSightImageProcessor {
 
         int cam = bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO;
         surfaces.add(mImageReader[cam].getSurface());
+        if (!bayer)
+            surfaces.add(mImageReader[CAM_TYPE_MONO_YUV].getSurface());
+
 //        surfaces.add(mEncodeImageReader[cam].getSurface());
 
         device.createCaptureSession(surfaces, captureSessionCallback, null);
@@ -469,6 +476,8 @@ public class ClearSightImageProcessor {
 
 //        List<CaptureRequest> burstList = new ArrayList<CaptureRequest>();
         requestBuilder.addTarget(mImageReader[cam].getSurface());
+        if (!bayer)
+            requestBuilder.addTarget(mImageReader[CAM_TYPE_MONO_YUV].getSurface());
 //        for (int i = 0; i < mNumBurstCount; i++) {
             requestBuilder.setTag(new Object());
             CaptureRequest request = requestBuilder.build();
@@ -490,10 +499,12 @@ public class ClearSightImageProcessor {
         if (cam == CAM_TYPE_BAYER) {
             currImageFormat = ImageFormat.JPEG; //ImageFormat.YUV_420_888; //
         }
+        if (cam == CAM_TYPE_MONO) {
+            currImageFormat = ImageFormat.RAW_SENSOR;
+            height = 3016;
+            width = 4032;
+        }
         else {
-//            currImageFormat = ImageFormat.RAW_SENSOR;
-//            height = 3016;
-//            width = 4032;
             currImageFormat = ImageFormat.YUV_420_888; // ImageFormat.RAW_SENSOR; //
         }
 
@@ -648,7 +659,8 @@ public class ClearSightImageProcessor {
                             }).start();
                             new Thread(new Runnable() {
                                 public void run() {
-                                    imwriteMono(monoImage);
+                                    mMediaSaveService.addRawImage(getJpegData(monoImage), mNamedEntity.title ,"raw");
+//                                    imwriteMono(monoImage);
                                     monoImage.close();
 
                                 }
@@ -667,6 +679,17 @@ public class ClearSightImageProcessor {
                 }
             }
             else {
+                for (int i=0; i<mMonoImages.size(); i++) {
+                    Image im = mMonoImages.poll();
+                    if (im != null)
+                        im.close();
+                }
+                for (int i=0; i<mBayerImages.size(); i++) {
+                    Image im = mBayerImages.poll();
+                    if (im != null)
+                        im.close();
+                }
+
                 if (byTimeout)
                     if (mCallback != null)
                         mCallback.onClearSightFailure(null);
@@ -794,8 +817,17 @@ public class ClearSightImageProcessor {
 
             if(msg.what == MSG_NEW_IMG) {
                 Log.d(TAG, "processNewCaptureEvent - newImg: " + msg.arg1);
-                Image image = (Image) msg.obj;
-                imageQueue.add(image);
+
+                if (msg.arg1 == CAM_TYPE_MONO_YUV) {
+                    Image image = (Image) msg.obj;
+                    saveDebugImageAsNV21(image, false, mNamedEntity, 1, 1/1000000);
+                    image.close();
+                }
+                else {
+
+
+                    Image image = (Image) msg.obj;
+                    imageQueue.add(image);
 
 //                boolean isBayer = (msg.arg1 == CAM_TYPE_BAYER);
 //                if (isBayer) {
@@ -805,8 +837,9 @@ public class ClearSightImageProcessor {
 //                    imwriteMono(image);
 //                }
 //                image.close();
-                mNumImagesToProcess[msg.arg1]--;
-                checkAndOver(false);
+                    mNumImagesToProcess[msg.arg1]--;
+                    checkAndOver(false);
+                }
 
             } else if(msg.what == MSG_NEW_CAPTURE_FAIL) {
                 Log.d(TAG, "processNewCaptureEvent - new failed result: " + msg.arg1);
