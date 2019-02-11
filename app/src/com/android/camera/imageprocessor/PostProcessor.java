@@ -327,11 +327,11 @@ public class PostProcessor{
                     Image rawImage = null;
                     //TODO: handle raw images ?
                     // (now mono images doesn't appear and all raw images are not handled)
-
-//                    if (mSaveRaw && mRawImageReader != null) {
-//                        rawImage = mRawImageReader.acquireLatestImage();
-//                    }
-
+                    if (mSecondZSLQueue != null) {// monochrome ZSL
+                        if (mSaveRaw && mRawImageReader != null) {
+                            rawImage = mRawImageReader.acquireLatestImage();
+                        }
+                    }
                     if (image == null) {
                         return;
                     }
@@ -414,7 +414,8 @@ public class PostProcessor{
     public void onMetaAvailable(TotalCaptureResult metadata) {
         // WARNING: I not sure that we need meta now, so I disable it
 //                if (mUseZSL && mZSLQueue != null) {
-//                    mZSLQueue.add(metadata);
+//                    mZSLQueue.add(metadata)
+//                    ;
 //                }
                 mLatestResultForLongShot = metadata;
 
@@ -535,8 +536,15 @@ public class PostProcessor{
             final String title = (name == null) ? null : name.title;
 
             final Image imageMono = imageItemMono.getImage();
+            final Image imageMonoRaw = imageItemMono.getRawImage();
+
             final Image imageBayer = imageItemBayer.getImage();
 
+            if (imageMonoRaw != null) {
+
+                byte[] data = CaptureModule.getJpegData(imageMonoRaw);
+                imageMonoRaw.close();
+            }
             if (imageMono != null) {
                 new Thread(new Runnable() {
                     public void run() {

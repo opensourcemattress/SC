@@ -137,7 +137,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         CountDownView.OnCountDownFinishedListener,
         MediaRecorder.OnErrorListener, MediaRecorder.OnInfoListener {
     public static final int DUAL_MODE = 0;
-    public static final int BAYER_MODE = 1;
+    public static final int BAYER_MODE = DUAL_MODE;
     public static final int MONO_MODE = 2;
     public static final int BAYER_ID = 0;
     public static int MONO_ID = -1;
@@ -333,7 +333,7 @@ public class CaptureModule implements CameraModule, PhotoController,
      * An additional thread for running tasks that shouldn't block the UI.
      */
     private HandlerThread mCameraThread;
-//    private HandlerThread mImageAvailableThread;
+    //    private HandlerThread mImageAvailableThread;
     private HandlerThread [] mImageAvailableThreads = new HandlerThread[MAX_NUM_CAM];
 
     private HandlerThread mCaptureCallbackThread;
@@ -348,14 +348,14 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     private CaptureResult mPreviewCaptureResultMono;
     private CaptureResult mPreviewCaptureResultBayer;
-//    private CaptureResult mPreviewCaptureResult;
+    //    private CaptureResult mPreviewCaptureResult;
     private Face[] mPreviewFaces = null;
     private Face[] mStickyFaces = null;
     private ExtendedFace[] mExFaces = null;
     private ExtendedFace[] mStickyExFaces = null;
     private Rect mBayerCameraRegion;
     private Handler mCameraHandler;
-//    private Handler mImageAvailableHandler;
+    //    private Handler mImageAvailableHandler;
     private Handler[] mImageAvailableHandlers = new Handler[MAX_NUM_CAM];
 
     private Handler mCaptureCallbackHandler;
@@ -1225,9 +1225,9 @@ public class CaptureModule implements CameraModule, PhotoController,
                     createSession(BAYER_ID);
                     createSession(MONO_ID);
                     break;
-                case BAYER_MODE:
-                    createSession(BAYER_ID);
-                    break;
+//                case BAYER_MODE:
+//                    createSession(BAYER_ID);
+//                    break;
                 case MONO_MODE:
                     createSession(MONO_ID);
                     break;
@@ -1320,16 +1320,9 @@ public class CaptureModule implements CameraModule, PhotoController,
                                     mCaptureSession[id].setRepeatingRequest(mPreviewRequestBuilder[id]
                                             .build(), mCaptureCallback, mCameraHandler);
                                 }
-                                if (isClearSightOn()) {
-//                                    if (id == MONO_ID) {
-//                                        ClearSightImageProcessor.getInstance().onCaptureSessionConfigured(id == BAYER_ID, cameraCaptureSession);
-//                                    }
-//                                    else {
-                                        mPostProcessors[id].onSessionConfigured(mCameraDevice[id], mCaptureSession[id]);
-//                                    }
-                                } else if (mChosenImageFormat == ImageFormat.PRIVATE && id == getMainCameraId()) {
-                                    mPostProcessors[id].onSessionConfigured(mCameraDevice[id], mCaptureSession[id]);
-                                }
+
+                                mPostProcessors[id].onSessionConfigured(mCameraDevice[id], mCaptureSession[id]);
+
                             } catch (CameraAccessException e) {
                                 e.printStackTrace();
                             } catch(IllegalStateException e) {
@@ -1369,10 +1362,15 @@ public class CaptureModule implements CameraModule, PhotoController,
                 mFrameProcessor.setOutputSurface(surface);
             }
 
-            if(isClearSightOn()) {
                 if (id == MONO_ID) {
                     mPreviewRequestBuilder[id].addTarget(surface);
                     list.add(surface);
+                    if (mSaveRaw) {
+                        list.add(mRawImageReader[id].getSurface());
+                    }
+                    if (mSaveRaw) {
+                        mPreviewRequestBuilder[id].addTarget(mRawImageReader[id].getSurface());
+                    }
 //                    ClearSightImageProcessor.getInstance().createCaptureSession(
 //                            id == BAYER_ID, mCameraDevice[id], list, captureSessionCallback);
                     mCameraDevice[id].createCaptureSession(list, captureSessionCallback, null);
@@ -1391,58 +1389,19 @@ public class CaptureModule implements CameraModule, PhotoController,
                         list.add(surs);
                     }
                     list.add(mImageReader[id].getSurface());
-                    if (mSaveRaw) {
-                        list.add(mRawImageReader[id].getSurface());
-                    }
+//                    if (mSaveRaw) {
+//                        list.add(mRawImageReader[id].getSurface());
+//                    }
                     mPreviewRequestBuilder[id].addTarget(mImageReader[id].getSurface());
 //                    list.add(mPostProcessor.getZSLReprocessImageReader().getSurface());
-                    if (mSaveRaw) {
-                        mPreviewRequestBuilder[id].addTarget(mRawImageReader[id].getSurface());
-                    }
+//                    if (mSaveRaw) {
+//                        mPreviewRequestBuilder[id].addTarget(mRawImageReader[id].getSurface());
+//                    }
 //                    mCameraDevice[id].createReprocessableCaptureSession(new InputConfiguration(mImageReader[id].getWidth(),
 //                            mImageReader[id].getHeight(), mImageReader[id].getImageFormat()), list, captureSessionCallback, null);
                     mCameraDevice[id].createCaptureSession(list, captureSessionCallback, null);
                 }
-            } else if (id == getMainCameraId()) {
-                if(mFrameProcessor.isFrameFilterEnabled()) {
-                    mActivity.runOnUiThread(new Runnable() {
-                        public void run() {
-                            mUI.getSurfaceHolder().setFixedSize(mPreviewSize.getHeight(), mPreviewSize.getWidth());
-                        }
-                    });
-                }
-                List<Surface> surfaces = mFrameProcessor.getInputSurfaces();
-                for(Surface surs : surfaces) {
-                    mPreviewRequestBuilder[id].addTarget(surs);
-                    list.add(surs);
-                }
-                list.add(mImageReader[id].getSurface());
-                if (mSaveRaw) {
-                    list.add(mRawImageReader[id].getSurface());
-                }
-                if(mChosenImageFormat == ImageFormat.YUV_420_888 || mChosenImageFormat == ImageFormat.PRIVATE) {
-//                if(mChosenImageFormat == ImageFormat.PRIVATE) {
-                    if (mPostProcessors[id].isZSLEnabled()) {
-                        mPreviewRequestBuilder[id].addTarget(mImageReader[id].getSurface());
-                        list.add(mPostProcessors[id].getZSLReprocessImageReader().getSurface());
-                        if (mSaveRaw) {
-                            mPreviewRequestBuilder[id].addTarget(mRawImageReader[id].getSurface());
-                        }
-                        mCameraDevice[id].createReprocessableCaptureSession(new InputConfiguration(mImageReader[id].getWidth(),
-                                mImageReader[id].getHeight(), mImageReader[id].getImageFormat()), list, captureSessionCallback, null);
-                    } else {
-                        mCameraDevice[id].createCaptureSession(list, captureSessionCallback, null);
-                    }
-                } else {
-                    mCameraDevice[id].createCaptureSession(list, captureSessionCallback, null);
-                }
-            } else {
-                mPreviewRequestBuilder[id].addTarget(surface);
-                list.add(surface);
-                list.add(mImageReader[id].getSurface());
-                // Here, we create a CameraCaptureSession for camera preview.
-                mCameraDevice[id].createCaptureSession(list, captureSessionCallback, null);
-            }
+
         } catch (CameraAccessException e) {
         }
     }
@@ -1619,12 +1578,12 @@ public class CaptureModule implements CameraModule, PhotoController,
 //                    mUI.enableShutter(false);
                     takeZSLPicture(MONO_ID);
                     break;
-                case BAYER_MODE:
-                    if(takeZSLPicture(BAYER_ID)) {
-                        return;
-                    }
-                    lockFocus(BAYER_ID);
-                    break;
+//                case BAYER_MODE:
+//                    if(takeZSLPicture(MONO_ID)) {
+//                        return;
+//                    }
+//                    lockFocus(BAYER_ID);
+//                    break;
                 case MONO_MODE:
                     lockFocus(MONO_ID);
                     break;
@@ -1775,43 +1734,16 @@ public class CaptureModule implements CameraModule, PhotoController,
         Log.d(TAG, "captureStillPicture " + id);
         mJpegImageData = null;
         mIsRefocus = false;
-        CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
 
-            @Override
-            public void onCaptureCompleted(CameraCaptureSession session,
-                                           CaptureRequest request,
-                                           TotalCaptureResult result) {
-                Log.d(TAG, "captureStillPicture onCaptureCompleted: " + id);
-            }
-
-            @Override
-            public void onCaptureFailed(CameraCaptureSession session,
-                                        CaptureRequest request,
-                                        CaptureFailure result) {
-                Log.d(TAG, "captureStillPicture onCaptureFailed: " + id);
-            }
-
-            @Override
-            public void onCaptureSequenceCompleted(CameraCaptureSession session, int
-                    sequenceId, long frameNumber) {
-                Log.d(TAG, "captureStillPicture onCaptureSequenceCompleted: " + id);
-                unlockFocus(id);
-            }
-        };
         try {
             if (null == mActivity || null == mCameraDevice[id]) {
                 warningToast("Camera is not ready yet to take a picture.");
                 return;
             }
 
-            final boolean csEnabled = isClearSightOn();
             CaptureRequest.Builder captureBuilder;
 
-            if(csEnabled) {
-                captureBuilder = ClearSightImageProcessor.getInstance().createCaptureRequest(mCameraDevice[id]);
-            } else {
-                captureBuilder = mCameraDevice[id].createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-            }
+            captureBuilder = mCameraDevice[id].createCaptureRequest(CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG);
 
             Location location = mLocationManager.getCurrentLocation();
             if(location != null) {
@@ -1834,104 +1766,12 @@ public class CaptureModule implements CameraModule, PhotoController,
             captureBuilder.set(CdsModeKey, 2); // CDS 0-OFF, 1-ON, 2-AUTO
             applySettingsForCapture(captureBuilder, id);
 
-            if(csEnabled) {
-                applySettingsForLockExposure(captureBuilder, id);
-                checkAndPlayShutterSound(id);
-                ClearSightImageProcessor.getInstance().capture(
-                        id==BAYER_ID, mCaptureSession[id], captureBuilder, mCaptureCallbackHandler);// , mBayerFocusDistance);
-            } else if(id == getMainCameraId() && mPostProcessors[id].isFilterOn()) { // Case of post filtering
-                applySettingsForLockExposure(captureBuilder, id);
-                checkAndPlayShutterSound(id);
-                mCaptureSession[id].stopRepeating();
-                captureBuilder.addTarget(mImageReader[id].getSurface());
-                if (mSaveRaw) {
-                    captureBuilder.addTarget(mRawImageReader[id].getSurface());
-                }
-                mPostProcessors[id].onStartCapturing();
-                if(mPostProcessors[id].isManualMode()) {
-                    mPostProcessors[id].manualCapture(captureBuilder, mCaptureSession[id], mCaptureCallbackHandler);
-                } else {
-                    List<CaptureRequest> captureList = mPostProcessors[id].setRequiredImages(captureBuilder);
-                    mCaptureSession[id].captureBurst(captureList, mPostProcessors[id].getCaptureCallback(), mCaptureCallbackHandler);
-                }
-            } else {
-                captureBuilder.addTarget(mImageReader[id].getSurface());
-                if (mSaveRaw) {
-                    captureBuilder.addTarget(mRawImageReader[id].getSurface());
-                }
-                mCaptureSession[id].stopRepeating();
+            applySettingsForLockExposure(captureBuilder, id);
+            checkAndPlayShutterSound(id);
+            ClearSightImageProcessor.getInstance().capture(
+                    id==BAYER_ID, mCaptureSession[id], captureBuilder, mCaptureCallbackHandler);// , mBayerFocusDistance);
 
-                if (mLongshotActive) {
-                    Log.d(TAG, "captureStillPicture capture longshot " + id);
-                    List<CaptureRequest> burstList = new ArrayList<>();
-                    for (int i = 0; i < PersistUtil.getLongshotShotLimit(); i++) {
-                        burstList.add(captureBuilder.build());
-                    }
-                    mCaptureSession[id].captureBurst(burstList, new
-                            CameraCaptureSession.CaptureCallback() {
 
-                                @Override
-                                public void onCaptureCompleted(CameraCaptureSession session,
-                                                               CaptureRequest request,
-                                                               TotalCaptureResult result) {
-                                    Log.d(TAG, "captureStillPicture Longshot onCaptureCompleted: " + id);
-                                    if (mLongshotActive) {
-                                        checkAndPlayShutterSound(id);
-                                        mActivity.runOnUiThread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                mUI.doShutterAnimation();
-                                            }
-                                        });
-                                    }
-                                }
-
-                                @Override
-                                public void onCaptureFailed(CameraCaptureSession session,
-                                                            CaptureRequest request,
-                                                            CaptureFailure result) {
-                                    Log.d(TAG, "captureStillPicture Longshot onCaptureFailed: " + id);
-                                    if (mLongshotActive) {
-                                        mActivity.runOnUiThread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                mUI.doShutterAnimation();
-                                            }
-                                        });
-                                    }
-                                }
-
-                                @Override
-                                public void onCaptureSequenceCompleted(CameraCaptureSession session, int
-                                        sequenceId, long frameNumber) {
-                                    Log.d(TAG, "captureStillPicture Longshot onCaptureSequenceCompleted: " + id);
-                                    mLongshotActive = false;
-                                    unlockFocus(id);
-                                }
-                            }, mCaptureCallbackHandler);
-                    mActivity.runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            mUI.enableVideo(false);
-                        }
-                    });
-
-                } else {
-                    checkAndPlayShutterSound(id);
-                    if(isMpoOn()) {
-                        mCaptureStartTime = System.currentTimeMillis();
-                        mMpoSaveHandler.obtainMessage(MpoSaveHandler.MSG_CONFIGURE,
-                                Long.valueOf(mCaptureStartTime)).sendToTarget();
-                    }
-//                    if(mChosenImageFormat == ImageFormat.YUV_420_888 || mChosenImageFormat == ImageFormat.PRIVATE) { // Case of ZSL, FrameFilter, SelfieMirror
-                    if(mChosenImageFormat == ImageFormat.PRIVATE) { // Case of ZSL, FrameFilter, SelfieMirror
-                        mPostProcessors[id].onStartCapturing();
-                        mCaptureSession[id].capture(captureBuilder.build(), mPostProcessors[id].getCaptureCallback(), mCaptureCallbackHandler);
-                    } else {
-                        mCaptureSession[id].capture(captureBuilder.build(), captureCallback, mCaptureCallbackHandler);
-                    }
-                }
-            }
         } catch (CameraAccessException e) {
             Log.d(TAG, "Capture still picture has failed");
             e.printStackTrace();
@@ -2043,127 +1883,26 @@ public class CaptureModule implements CameraModule, PhotoController,
                 }
                 mCameraId[i] = cameraId;
 
-                if (isClearSightOn()) {
-                    if(i == BAYER_ID || i == MONO_ID) {
-//                        ClearSightImageProcessor.getInstance().init(map, mPictureSize.getWidth(),
-//                                mPictureSize.getHeight(), mActivity, mOnMediaSavedListener);
-                        if (i == BAYER_ID) {
-                            ClearSightImageProcessor.getInstance().init(map, mActivity,
-                                    mOnMediaSavedListener);
-                            ClearSightImageProcessor.getInstance().setCallback(this);
-//                            imageFormat = ImageFormat.JPEG;
-                        }
-
-//                        if(mPostProcessors[i].isZSLEnabled()) {
-                        mImageReader[i] = ImageReader.newInstance(mSupportedMaxPictureSize.getWidth(),
-                                    mSupportedMaxPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
-//                        } else {
-//                            mImageReader[i] = ImageReader.newInstance(mPictureSize.getWidth(),
-//                                    mPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
-//                        }
-                        if (mSaveRaw) {
-                            mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
-                                    mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
-                            mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
-                        }
-                        mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandlers[i]);
-                        mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
-                    }
-//                    else {
-//                        mImageReader[i] = ImageReader.newInstance(mSupportedMaxPictureSize.getWidth(),
-//                                mSupportedMaxPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
-//                        if (mSaveRaw) {
-//                            mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
-//                                    mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
-//                            mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
-//                        }
-//                        mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandler);
-//                        mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
-//
-//                    }
-                } else {
-//                    if ((imageFormat == ImageFormat.YUV_420_888 || imageFormat == ImageFormat.PRIVATE)
-                    if ((imageFormat == ImageFormat.PRIVATE)
-                            && i == getMainCameraId()) {
-                        if(mPostProcessors[i].isZSLEnabled()) {
-                            mImageReader[i] = ImageReader.newInstance(mSupportedMaxPictureSize.getWidth(),
-                                    mSupportedMaxPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
-                        } else {
-                            mImageReader[i] = ImageReader.newInstance(mPictureSize.getWidth(),
-                                    mPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
-                        }
-                        if (mSaveRaw) {
-                            mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
-                                    mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
-                            mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
-                        }
-                        mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandlers[i]);
-                        mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
-                    } else {
-                        mImageReader[i] = ImageReader.newInstance(mPictureSize.getWidth(),
-                                mPictureSize.getHeight(), imageFormat, PersistUtil.getLongshotShotLimit());
-
-                        ImageAvailableListener listener = new ImageAvailableListener(i) {
-                            @Override
-                            public void onImageAvailable(ImageReader reader) {
-                                Log.d(TAG, "image available for cam: " + mCamId);
-                                Image image = reader.acquireNextImage();
-
-                                if (isMpoOn()) {
-                                    mMpoSaveHandler.obtainMessage(
-                                            MpoSaveHandler.MSG_NEW_IMG, mCamId, 0, image).sendToTarget();
-                                } else {
-                                    mCaptureStartTime = System.currentTimeMillis();
-                                    mNamedImages.nameNewImage(mCaptureStartTime);
-                                    NamedEntity name = mNamedImages.getNextNameEntity();
-                                    String title = (name == null) ? null : name.title;
-                                    long date = (name == null) ? -1 : name.date;
-
-                                    byte[] bytes = getJpegData(image);
-
-                                    if (image.getFormat() == ImageFormat.RAW10) {
-                                        mActivity.getMediaSaveService().addRawImage(bytes, title,
-                                                "raw");
-                                    } else {
-                                        mActivity.getMediaSaveService().addRawImage(bytes, title,
-                                                "yuv");
-//                                        ExifInterface exif = Exif.getExif(bytes);
-//                                        int orientation = Exif.getOrientation(exif);
-//
-//                                        if (mIntentMode != CaptureModule.INTENT_MODE_NORMAL) {
-//                                            mJpegImageData = bytes;
-//                                            if (!mQuickCapture) {
-//                                                showCapturedReview(bytes, orientation,
-//                                                        mPostProcessor.isSelfieMirrorOn());
-//                                            } else {
-//                                                onCaptureDone();
-//                                            }
-//                                        } else {
-//                                            mActivity.getMediaSaveService().addImage(bytes, title, date,
-//                                                    null, image.getWidth(), image.getHeight(), orientation, null,
-//                                                    mOnMediaSavedListener, mContentResolver, "jpeg");
-//
-//                                            if (mLongshotActive) {
-//                                                mLastJpegData = bytes;
-//                                            } else {
-//                                                mActivity.updateThumbnail(bytes);
-//                                            }
-//                                        }
-
-                                    }
-                                }
-                                image.close();
-                            }
-                        };
-                        mImageReader[i].setOnImageAvailableListener(listener, mImageAvailableHandlers[i]);
-
-                        if (mSaveRaw) {
-                            mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
-                                    mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, PersistUtil.getLongshotShotLimit());
-                            mRawImageReader[i].setOnImageAvailableListener(listener, mImageAvailableHandlers[i]);
-                        }
-                    }
+                if (i != BAYER_ID && i != MONO_ID) {
+                    continue;
                 }
+
+                if (i == BAYER_ID) {
+                    ClearSightImageProcessor.getInstance().init(map, mActivity,
+                            mOnMediaSavedListener);
+                    ClearSightImageProcessor.getInstance().setCallback(this);
+                }
+
+                mImageReader[i] = ImageReader.newInstance(mSupportedMaxPictureSize.getWidth(),
+                        mSupportedMaxPictureSize.getHeight(), imageFormat, mPostProcessors[i].getMaxRequiredImageNum());
+
+                if (mSaveRaw) {
+                    mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
+                            mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
+                    mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
+                }
+                mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandlers[i]);
+                mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
             }
             mMediaRecorder = new MediaRecorder();
             mAutoFocusRegionSupported = mSettingsManager.isAutoFocusRegionSupported(mCameraIdList);
@@ -2221,7 +1960,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             builder.setTag(id);
             addPreviewSurface(builder, null, id);
 
-            applySettingsForUnlockFocus(builder, id);
+//            applySettingsForUnlockFocus(builder, id);
             mCaptureSession[id].capture(builder.build(), mCaptureCallback, mCameraHandler);
             mState[id] = STATE_PREVIEW;
             if (id == getMainCameraId()) {
@@ -2232,10 +1971,10 @@ public class CaptureModule implements CameraModule, PhotoController,
                     }
                 });
             }
-            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-            applyFlash(mPreviewRequestBuilder[id], id);
+//            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+//            applyFlash(mPreviewRequestBuilder[id], id);
             applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
-            setAFModeToPreview(id, mControlAFMode);
+//            setAFModeToPreview(id, mControlAFMode);
             mTakingPicture[id] = false;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -2732,17 +2471,19 @@ public class CaptureModule implements CameraModule, PhotoController,
 //                mPostProcessor.onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
 //            }
 //        }
+//        mSaveRaw = isRawCaptureOn();
+        mSaveRaw = true;
 
         for (int i = 0; i < MAX_NUM_CAM; i++) {
 
             if (mPostProcessors[i] != null) {
-                mSaveRaw = isRawCaptureOn();
+                boolean saveRaw = mSaveRaw && i == MONO_ID;
                 if (scene != null) {
                     int mode = Integer.parseInt(scene);
                     Log.d(TAG, "Chosen postproc filter id : " + getPostProcFilterId(mode));
-                    mPostProcessors[i].onOpen(getPostProcFilterId(mode), isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
+                    mPostProcessors[i].onOpen(getPostProcFilterId(mode), isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, saveRaw);
                 } else {
-                    mPostProcessors[i].onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
+                    mPostProcessors[i].onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, saveRaw);
                 }
             }
 
@@ -2767,7 +2508,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 //                mChosenImageFormat = ImageFormat.YUV_420_888;
 //            }
 //            if (i == MONO_ID)
-                setUpCameraOutputs(ImageFormat.YUV_420_888);
+        setUpCameraOutputs(ImageFormat.YUV_420_888);
 //            else if (i == BAYER_ID)
 //                setUpCameraOutputs(ImageFormat.JPEG);
 //        }
@@ -2837,7 +2578,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         if (isBackCamera()) {
             switch (getCameraMode()) {
                 case DUAL_MODE:
-                case BAYER_MODE:
+//                case BAYER_MODE:
                     msg.arg1 = BAYER_ID;
                     mCameraHandler.sendMessage(msg);
                     break;
@@ -2977,9 +2718,9 @@ public class CaptureModule implements CameraModule, PhotoController,
                     applyZoomAndUpdate(BAYER_ID);
                     applyZoomAndUpdate(MONO_ID);
                     break;
-                case BAYER_MODE:
-                    applyZoomAndUpdate(BAYER_ID);
-                    break;
+//                case BAYER_MODE:
+//                    applyZoomAndUpdate(BAYER_ID);
+//                    break;
                 case MONO_MODE:
                     applyZoomAndUpdate(MONO_ID);
                     break;
@@ -2995,8 +2736,8 @@ public class CaptureModule implements CameraModule, PhotoController,
             switch (getCameraMode()) {
                 case DUAL_MODE:
                     return cameraId == BAYER_ID || cameraId == MONO_ID;
-                case BAYER_MODE:
-                    return cameraId == BAYER_ID;
+//                case BAYER_MODE:
+//                    return cameraId == BAYER_ID;
                 case MONO_MODE:
                     return cameraId == MONO_ID;
             }
@@ -3160,9 +2901,9 @@ public class CaptureModule implements CameraModule, PhotoController,
                     triggerFocusAtPoint(x, y, BAYER_ID);
                     triggerFocusAtPoint(x, y, MONO_ID);
                     break;
-                case BAYER_MODE:
-                    triggerFocusAtPoint(x, y, BAYER_ID);
-                    break;
+//                case BAYER_MODE:
+//                    triggerFocusAtPoint(x, y, BAYER_ID);
+//                    break;
                 case MONO_MODE:
                     triggerFocusAtPoint(x, y, MONO_ID);
                     break;
@@ -3176,7 +2917,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         if (isBackCamera()) {
             switch (getCameraMode()) {
                 case DUAL_MODE:
-                case BAYER_MODE:
+//                case BAYER_MODE:
                     return BAYER_ID;
                 case MONO_MODE:
                     return MONO_ID;
@@ -4659,7 +4400,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         String value = mSettingsManager.getValue(SettingsManager.KEY_FACE_DETECTION);
         if (value != null && value.equals("on")) {
             request.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE,
-                    CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE);
+                    CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL);
         }
     }
 
@@ -4868,9 +4609,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
             if (isBackCamera()) {
                 switch (getCameraMode()) {
-                    case BAYER_MODE:
-                        updatePreviewBayer |= applyPreferenceToPreview(BAYER_ID, key, value);
-                        break;
+//                    case BAYER_MODE:
+//                        updatePreviewBayer |= applyPreferenceToPreview(BAYER_ID, key, value);
+//                        break;
                     case MONO_MODE:
                         updatePreviewMono |= applyPreferenceToPreview(MONO_ID, key, value);
                         break;
@@ -4900,8 +4641,8 @@ public class CaptureModule implements CameraModule, PhotoController,
                 if (checkSessionAndBuilder(mCaptureSession[MONO_ID],
                         mPreviewRequestBuilder[MONO_ID])) {
 //                    if (canStartMonoPreview()) {
-                        mCaptureSession[MONO_ID].setRepeatingRequest(mPreviewRequestBuilder[MONO_ID]
-                                .build(), mCaptureCallback, mCameraHandler);
+                    mCaptureSession[MONO_ID].setRepeatingRequest(mPreviewRequestBuilder[MONO_ID]
+                            .build(), mCaptureCallback, mCameraHandler);
 //                    } else {
 //                        mCaptureSession[MONO_ID].capture(mPreviewRequestBuilder[MONO_ID]
 //                                .build(), mCaptureCallback, mCameraHandler);
