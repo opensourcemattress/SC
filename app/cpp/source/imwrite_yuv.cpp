@@ -31,6 +31,36 @@ std::string ConvertJString(JNIEnv *env, jstring str) {
 
 jint
 //JNICALL
+Java_com_android_camera_imageprocessor_PostProcessor_get8bitDataFromRAW10(
+        JNIEnv *env,
+        jobject obj /* this  */,
+        jbyteArray rawBuffer,
+        jbyteArray resultBuffer
+) {
+    jbyte* rawBuffer_jbyte = env->GetByteArrayElements(rawBuffer, NULL);
+    jint rawBuffer_len = env->GetArrayLength(rawBuffer);
+
+    jbyte* resultBuffer_jbyte = env->GetByteArrayElements(resultBuffer, NULL);
+    unsigned char* result_buffer_data = (unsigned char*)resultBuffer_jbyte;
+
+    if (rawBuffer_len % 5 != 0)
+        return -1;
+
+    unsigned char* rawBuffer_data = (unsigned char*)rawBuffer_jbyte;
+
+    result_buffer_data[0] = rawBuffer_data[0];
+    for (int i=1, j=1; i<rawBuffer_len; i++) {
+        if (i % 5 == 0)
+            continue;
+        result_buffer_data[j] = rawBuffer_data[i];
+        j++;
+    }
+    return 0;
+
+}
+
+jint
+//JNICALL
 Java_org_codeaurora_snapcam_filter_ClearSightImageProcessor_getCorrectedYUVData(
         JNIEnv *env,
         jobject obj /* this  */,

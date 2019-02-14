@@ -90,6 +90,9 @@ import com.android.camera.util.PersistUtil;
 import android.util.Size;
 
 import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.imgcodecs.Imgcodecs;
 
 public class PostProcessor{
 
@@ -169,6 +172,7 @@ public class PostProcessor{
     }
 
     private native int imwriteYUVnative(byte[] yBuffer, byte[] vuBuffer, String savePath);
+    private native int get8bitDataFromRAW10(byte[] rawBuffer, byte[] resultBuffer);
 
     public ZSLQueue getZSLQueue () {
         return mZSLQueue;
@@ -542,7 +546,15 @@ public class PostProcessor{
 
             if (imageMonoRaw != null) {
 
-                byte[] data = CaptureModule.getJpegData(imageMonoRaw);
+                byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
+                byte[] resultData = new byte[4032*3016];
+                get8bitDataFromRAW10(rawData, resultData);
+                Mat test = new Mat(3016,4032, CvType.CV_8U);
+                test.put(0, 0, resultData);
+                String filename = "mnt/sdcard/DCIM/Camera/raw/" + title +  "_m_raw.png";
+
+                Imgcodecs.imwrite(filename, test);
+
                 imageMonoRaw.close();
             }
             if (imageMono != null) {
