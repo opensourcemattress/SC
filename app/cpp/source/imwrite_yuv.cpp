@@ -31,6 +31,52 @@ std::string ConvertJString(JNIEnv *env, jstring str) {
 
 jint
 //JNICALL
+Java_com_android_camera_CaptureModule_get8bitDataFromRAW10(
+        JNIEnv *env,
+        jobject obj /* this  */,
+        jbyteArray rawBuffer,
+        jbyteArray resultBuffer
+) {
+    jbyte* rawBuffer_jbyte = env->GetByteArrayElements(rawBuffer, NULL);
+    jint rawBuffer_len = env->GetArrayLength(rawBuffer);
+
+    jbyte* resultBuffer_jbyte = env->GetByteArrayElements(resultBuffer, NULL);
+    unsigned char* result_buffer_data = (unsigned char*)resultBuffer_jbyte;
+
+    if (rawBuffer_len % 5 != 0)
+        return -1;
+
+    unsigned char* rawBuffer_data = (unsigned char*)rawBuffer_jbyte;
+
+    result_buffer_data[0] = rawBuffer_data[0];
+    int j = 1;
+    std::ofstream fout;
+    fout.open("/mnt/sdcard/result_buffer0.txt");
+    fout << "test" << j << std::endl;
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+    fout.close();
+
+    for (int i=1; i<rawBuffer_len; i++) {
+        if ((i+1) % 5 == 0) {
+            //nothing here
+        }
+        else {
+            result_buffer_data[j] = rawBuffer_data[i];
+            j++;
+        }
+    }
+
+
+    std::ofstream fout1;
+    fout1.open("/mnt/sdcard/result_buffer.txt");
+    fout1 << "test" << j << std::endl;
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+    fout1.close();
+    return 0;
+}
+
+jint
+//JNICALL
 Java_org_codeaurora_snapcam_filter_ClearSightImageProcessor_getCorrectedYUVData(
         JNIEnv *env,
         jobject obj /* this  */,

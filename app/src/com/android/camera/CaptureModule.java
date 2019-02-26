@@ -1302,7 +1302,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                             }
                             initializePreviewConfiguration(id);
                             setDisplayOrientation();
-                            updateFaceDetection();
+//                            updateFaceDetection();
                             try {
                                 if (isBackCamera() && getCameraMode() == DUAL_MODE) {
                                     linkBayerMono(id);
@@ -2232,10 +2232,10 @@ public class CaptureModule implements CameraModule, PhotoController,
                     }
                 });
             }
-            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-            applyFlash(mPreviewRequestBuilder[id], id);
+//            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+//            applyFlash(mPreviewRequestBuilder[id], id);
             applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
-            setAFModeToPreview(id, mControlAFMode);
+//            setAFModeToPreview(id, mControlAFMode);
             mTakingPicture[id] = false;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -2379,6 +2379,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     private void applySettingsForLockFocus(CaptureRequest.Builder builder, int id) {
         builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+
         applyAFRegions(builder, id);
         applyAERegions(builder, id);
         applyCommonSettings(builder, id);
@@ -2413,7 +2414,7 @@ public class CaptureModule implements CameraModule, PhotoController,
     private void applySettingsForUnlockFocus(CaptureRequest.Builder builder, int id) {
         builder.set(CaptureRequest.CONTROL_AF_TRIGGER,
                 CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
-        applyCommonSettings(builder, id);
+//        applyCommonSettings(builder, id);
     }
 
     private void applySettingsForAutoFocus(CaptureRequest.Builder builder, int id) {
@@ -2442,7 +2443,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
 
 
-        applyFaceDetection(builder);
+//        applyFaceDetection(builder);
         applyWhiteBalance(builder);
         applyExposure(builder);
         applyIso(builder);
@@ -3733,7 +3734,7 @@ public class CaptureModule implements CameraModule, PhotoController,
         applyNoiseReduction(builder);
         applyColorEffect(builder);
         applyVideoFlash(builder);
-        applyFaceDetection(builder);
+//        applyFaceDetection(builder);
         applyZoom(builder, cameraId);
     }
 
@@ -4489,7 +4490,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                 break;
             case SettingsManager.KEY_FACE_DETECTION:
                 updatePreview = true;
-                applyFaceDetection(mPreviewRequestBuilder[cameraId]);
+//                applyFaceDetection(mPreviewRequestBuilder[cameraId]);
                 break;
             case SettingsManager.KEY_FOCUS_DISTANCE:
                 updatePreview = true;
@@ -4746,8 +4747,8 @@ public class CaptureModule implements CameraModule, PhotoController,
             Log.v(TAG, "cancelTouchFocus " + id);
         }
         mState[id] = STATE_PREVIEW;
-        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-        setAFModeToPreview(id, mControlAFMode);
+//        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+//        setAFModeToPreview(id, mControlAFMode);
     }
 
     private MeteringRectangle[] afaeRectangle(float x, float y, int width, int height,
@@ -4843,7 +4844,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                     updateTimeLapseSetting();
                     continue;
                 case SettingsManager.KEY_FACE_DETECTION:
-                    updateFaceDetection();
+//                    updateFaceDetection();
                     break;
                 case SettingsManager.KEY_CAMERA_ID:
                 case SettingsManager.KEY_MONO_ONLY:
