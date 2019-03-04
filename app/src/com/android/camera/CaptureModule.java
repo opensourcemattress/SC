@@ -29,6 +29,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
@@ -114,11 +115,16 @@ import com.android.internal.util.MemInfoReader;
 
 import org.codeaurora.snapcam.R;
 import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.imgcodecs.Imgcodecs;
 
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
@@ -130,6 +136,7 @@ import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.lang.reflect.Method;
+import android.hardware.camera2.params.LensShadingMap;
 
 public class CaptureModule implements CameraModule, PhotoController,
         MediaSaveService.Listener, ClearSightImageProcessor.Callback,
@@ -414,6 +421,7 @@ public class CaptureModule implements CameraModule, PhotoController,
     private MediaActionSound mSound;
     private Size mSupportedMaxPictureSize;
     private Size mSupportedRawPictureSize;
+    private LensShadingMap lensMap;
 
     private long mIsoExposureTime;
     private int mIsoSensitivity;
@@ -423,7 +431,16 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     private long mShotStartTime = 0L;
 
+    private byte[] maskBytes = new byte[4032*3016 * 4];
+
+    static {
+        System.loadLibrary("imwrite_yuv");
+    }
+    private native int convertRAW10(byte[] rawBuffer, byte[] maskBuffer, byte[] resultBuffer);
+
+
     public static ByteBuffer correctY(ByteBuffer yBuffer, byte[] tmpBuf) {
+
         int sizeY = yBuffer.capacity();
         int width = 4000;
         int height = 3000;
@@ -667,6 +684,22 @@ public class CaptureModule implements CameraModule, PhotoController,
     /**
      * A {@link CameraCaptureSession.CaptureCallback} that handles events related to JPEG capture.
      */
+    public void testLensShading(CaptureResult result) {
+        LensShadingMap shadingMap = result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
+        int shadingMapSize = shadingMap.getColumnCount() * shadingMap.getRowCount();
+        float[] res = new float[shadingMapSize];
+        shadingMap.copyGainFactors(res,0);
+        try {
+            DataOutputStream os = new DataOutputStream(new FileOutputStream(("/mnt/sdcard/DCIM/Camera/test_mask.bin")));
+            for (int i=0; i<shadingMapSize; i++)
+                os.writeFloat(res[i]);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
     private CameraCaptureSession.CaptureCallback mCaptureCallback
             = new CameraCaptureSession.CaptureCallback() {
 
@@ -734,6 +767,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                     updateGraghView();
                 }
             }
+//            testLensShading(result);
             processCaptureResult(result);
             mPostProcessors[id].onMetaAvailable(result);
         }
@@ -1083,8 +1117,8 @@ public class CaptureModule implements CameraModule, PhotoController,
     public int getCameraMode() {
         String value = mSettingsManager.getValue(SettingsManager.KEY_SCENE_MODE);
         if (value != null && value.equals(SettingsManager.SCENE_MODE_DUAL_STRING)) return DUAL_MODE;
-        value = mSettingsManager.getValue(SettingsManager.KEY_MONO_ONLY);
-        if (value == null || !value.equals("on")) return BAYER_MODE;
+//        value = mSettingsManager.getValue(SettingsManager.KEY_MONO_ONLY);
+//        if (value == null || !value.equals("on")) return BAYER_MODE;
         return MONO_MODE;
     }
 
@@ -1101,9 +1135,10 @@ public class CaptureModule implements CameraModule, PhotoController,
     }
 
     private boolean isRawCaptureOn() {
-        String value = mSettingsManager.getValue(SettingsManager.KEY_SAVERAW);
-        if (value == null) return  false;
-        return value.equals("enable");
+//        String value = mSettingsManager.getValue(SettingsManager.KEY_SAVERAW);
+//        if (value == null) return  false;
+//        return value.equals("enable");
+        return true ;
     }
 
     private boolean isMpoOn() {
@@ -1447,6 +1482,25 @@ public class CaptureModule implements CameraModule, PhotoController,
         }
     }
 
+
+    public void setAFModeToPreviewNoSetActually(int id, int afMode) {
+        if (!checkSessionAndBuilder(mCaptureSession[id], mPreviewRequestBuilder[id])) {
+            return;
+        }
+        if (DEBUG) {
+            Log.d(TAG, "setAFModeToPreview " + afMode);
+        }
+//        mPreviewRequestBuilder[id].set(CaptureRequest.CONTROL_AF_MODE, afMode);
+//        applyAFRegions(mPreviewRequestBuilder[id], id);
+//        applyAERegions(mPreviewRequestBuilder[id], id);
+        mPreviewRequestBuilder[id].setTag(id);
+//        try {
+//            mCaptureSession[id].setRepeatingRequest(mPreviewRequestBuilder[id]
+//                    .build(), mCaptureCallback, mCameraHandler);
+//        } catch (CameraAccessException | IllegalStateException e) {
+//            e.printStackTrace();
+//        }
+    }
     public void setAFModeToPreview(int id, int afMode) {
         if (!checkSessionAndBuilder(mCaptureSession[id], mPreviewRequestBuilder[id])) {
             return;
@@ -1528,6 +1582,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     @Override
     public void init(CameraActivity activity, View parent) {
+
         mActivity = activity;
         mRootView = parent;
         mSettingsManager = SettingsManager.getInstance();
@@ -1541,6 +1596,16 @@ public class CaptureModule implements CameraModule, PhotoController,
         }
         for (int i = 0; i < MAX_NUM_CAM; i++) {
             mState[i] = STATE_PREVIEW;
+        }
+
+        InputStream maskStream = mActivity.getResources().openRawResource(R.raw.mask);
+        try {
+            int n_read = maskStream.read(maskBytes);
+            if (n_read != 4032 * 3016 * 4) {
+                mBayerFocusDistance = 1;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
 
 //        mPostProcessor = new PostProcessor(mActivity, this);
@@ -1781,6 +1846,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             public void onCaptureCompleted(CameraCaptureSession session,
                                            CaptureRequest request,
                                            TotalCaptureResult result) {
+//                testLensShading(result);
                 Log.d(TAG, "captureStillPicture onCaptureCompleted: " + id);
             }
 
@@ -1827,12 +1893,21 @@ public class CaptureModule implements CameraModule, PhotoController,
 //            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, CameraUtil.getJpegRotation(id, mOrientation));
 //            captureBuilder.set(CaptureRequest.JPEG_THUMBNAIL_SIZE, mPictureThumbSize);
 //            captureBuilder.set(CaptureRequest.JPEG_THUMBNAIL_QUALITY, (byte)80);
+
+
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
             addPreviewSurface(captureBuilder, null, id);
             captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, mControlAFMode);
             captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
             captureBuilder.set(CdsModeKey, 2); // CDS 0-OFF, 1-ON, 2-AUTO
             applySettingsForCapture(captureBuilder, id);
+
+            captureBuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_OFF);
+
+            captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+            captureBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+            captureBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+            captureBuilder.set(CaptureRequest.SHADING_MODE, CaptureRequest.SHADING_MODE_FAST);
 
             if(csEnabled) {
                 applySettingsForLockExposure(captureBuilder, id);
@@ -2064,7 +2139,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                         if (mSaveRaw) {
                             mRawImageReader[i] = ImageReader.newInstance(mSupportedRawPictureSize.getWidth(),
                                     mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
-                            mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
+//                            mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
                         }
                         mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandlers[i]);
                         mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
@@ -2122,9 +2197,22 @@ public class CaptureModule implements CameraModule, PhotoController,
                                     byte[] bytes = getJpegData(image);
 
                                     if (image.getFormat() == ImageFormat.RAW10) {
-                                        mActivity.getMediaSaveService().addRawImage(bytes, title,
-                                                "raw");
+                                        byte[] convertedRaw = new byte[3016 * 4032];
+                                        convertRAW10(bytes, maskBytes, convertedRaw);
+                                        Mat test = new Mat(3016,4032, CvType.CV_8U);
+                                        test.put(0, 0, convertedRaw);
+                                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format("%s", title) + "_m__raw.png";
+
+                                        Imgcodecs.imwrite(filename, test);
+//                                        mActivity.getMediaSaveService().addRawImage(bytes, title,
+//                                                "raw");
                                     } else {
+//                                        getResources().getIdentifier("FILENAME_WITHOUT_EXTENSION",
+//                                                "raw", getPackageName());
+
+
+//                                        R.raw.mask;
+
                                         mActivity.getMediaSaveService().addRawImage(bytes, title,
                                                 "yuv");
 //                                        ExifInterface exif = Exif.getExif(bytes);
@@ -2232,10 +2320,10 @@ public class CaptureModule implements CameraModule, PhotoController,
                     }
                 });
             }
-//            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_AUTO;
 //            applyFlash(mPreviewRequestBuilder[id], id);
             applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
-//            setAFModeToPreview(id, mControlAFMode);
+            setAFModeToPreviewNoSetActually(id, mControlAFMode);
             mTakingPicture[id] = false;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -2733,17 +2821,17 @@ public class CaptureModule implements CameraModule, PhotoController,
 //                mPostProcessor.onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
 //            }
 //        }
+        mSaveRaw = isRawCaptureOn();
 
         for (int i = 0; i < MAX_NUM_CAM; i++) {
-
+            boolean saveRaw = mSaveRaw && i == MONO_ID;
             if (mPostProcessors[i] != null) {
-                mSaveRaw = isRawCaptureOn();
                 if (scene != null) {
                     int mode = Integer.parseInt(scene);
                     Log.d(TAG, "Chosen postproc filter id : " + getPostProcFilterId(mode));
-                    mPostProcessors[i].onOpen(getPostProcFilterId(mode), isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
+                    mPostProcessors[i].onOpen(getPostProcFilterId(mode), isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, saveRaw);
                 } else {
-                    mPostProcessors[i].onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, mSaveRaw);
+                    mPostProcessors[i].onOpen(PostProcessor.FILTER_NONE, isFlashOn, isTrackingFocusSettingOn(), isMakeupOn, isSelfieMirrorOn, saveRaw);
                 }
             }
 
@@ -5131,6 +5219,11 @@ public class CaptureModule implements CameraModule, PhotoController,
         long tDelta = tEnd - mShotStartTime;
         double elapsedSeconds = tDelta / 1000.0;
         Log.d(TAG, "onClearSightSuccess " + String.valueOf(elapsedSeconds) + " seconds");
+        try { //TODO: handle ZSL case somehow. I suppose that I refocus while taking ZSL shot
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         onReleaseShutterLock();
         if(thumbnailBytes != null) mActivity.updateThumbnail(thumbnailBytes);
         mActivity.runOnUiThread(new Runnable() {
