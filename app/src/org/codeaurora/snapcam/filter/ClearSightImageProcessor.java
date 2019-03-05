@@ -660,7 +660,12 @@ public class ClearSightImageProcessor {
                             mCallback.onClearSightSuccess(mBayerData);
                         }
                         else {
-                                mCallback.onClearSightFailure(null);
+                            if (monoImage != null)
+                                monoImage.close();
+                            if (bayerImage != null)
+                                bayerImage.close();
+
+                            mCallback.onClearSightFailure(null);
                         }
                     }
 
@@ -668,8 +673,16 @@ public class ClearSightImageProcessor {
             }
             else {
                 if (byTimeout)
-                    if (mCallback != null)
+                    if (mCallback != null) {
+                        final Image bayerImage = mBayerImages.poll();
+                        final Image monoImage = mMonoImages.poll();
+
+                        if (monoImage != null)
+                            monoImage.close();
+                        if (bayerImage != null)
+                            bayerImage.close();
                         mCallback.onClearSightFailure(null);
+                    }
             }
         }
 
