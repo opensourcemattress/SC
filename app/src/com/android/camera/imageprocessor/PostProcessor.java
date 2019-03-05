@@ -75,6 +75,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -89,6 +90,7 @@ import com.android.camera.util.PersistUtil;
 
 import android.util.Size;
 
+import org.codeaurora.snapcam.R;
 import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -170,9 +172,11 @@ public class PostProcessor{
     static {
         System.loadLibrary("imwrite_yuv");
     }
+    private byte[] maskBytes = new byte[4032*3016 * 4];
 
     private native int imwriteYUVnative(byte[] yBuffer, byte[] vuBuffer, String savePath);
     private native int get8bitDataFromRAW10(byte[] rawBuffer, byte[] resultBuffer);
+    private native int convertAndSaveRAW10Native(byte[] rawBuffer, byte[] mask, String savePath);
 
     public ZSLQueue getZSLQueue () {
         return mZSLQueue;
@@ -545,15 +549,16 @@ public class PostProcessor{
             final Image imageBayer = imageItemBayer.getImage();
 
             if (imageMonoRaw != null) {
-
                 byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
-                byte[] resultData = new byte[4032*3016];
-                get8bitDataFromRAW10(rawData, resultData);
-                Mat test = new Mat(3016,4032, CvType.CV_8U);
-                test.put(0, 0, resultData);
-                String filename = "mnt/sdcard/DCIM/Camera/raw/" + title +  "_m_raw.png";
+                String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_m_raw.png";
 
-                Imgcodecs.imwrite(filename, test);
+                convertAndSaveRAW10Native(rawData, maskBytes, filename);
+//                byte[] resultData = new byte[4032*3016];
+//                get8bitDataFromRAW10(rawData, resultData);
+//                Mat test = new Mat(3016,4032, CvType.CV_8U);
+//                test.put(0, 0, resultData);
+//
+//                Imgcodecs.imwrite(filename, test);
 
                 imageMonoRaw.close();
             }
@@ -563,7 +568,7 @@ public class PostProcessor{
 //                        long duration = System.currentTimeMillis() - startTime;
 //                        String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_" + String.valueOf(duration) +  "_m.jpg";
 
-                        String filename = "mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
+                        String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
 
                         ClearSightImageProcessor.imwriteMono(imageMono, filename);
                         imageMono.close();
@@ -587,7 +592,7 @@ public class PostProcessor{
                 new Thread(new Runnable() {
                     public void run() {
 //                        long duration = System.currentTimeMillis() - startTime;
-                        String filename = "mnt/sdcard/DCIM/Camera/raw/" + title +  "_c.jpg";
+                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_c.jpg";
 
                         ClearSightImageProcessor.imwriteYUVimage(imageBayer, filename);
                         imageBayer.close();
@@ -772,6 +777,17 @@ public class PostProcessor{
         mController = module;
         mActivity = activity;
         mNamedImages = new PhotoModule.NamedImages();
+
+        InputStream maskStream = mActivity.getResources().openRawResource(R.raw.mask);
+        try {
+            int n_read = maskStream.read(maskBytes);
+//            if (n_read != 4032 * 3016 * 4) {
+
+//            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 
     public boolean isItBusy() {

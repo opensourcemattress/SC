@@ -4,6 +4,7 @@
 #include <vector>
 #include <chrono>
 #include <fstream>
+#include <math.h>
 
 #include <cstring>
 #include <malloc.h>
@@ -31,7 +32,7 @@ std::string ConvertJString(JNIEnv *env, jstring str) {
 
 jint
 //JNICALL
-Java_com_android_camera_imageprocessor_PostProcessor_get8bitDataFromRAW10(
+Java_com_android_camera_CaptureModule_get8bitDataFromRAW10(
         JNIEnv *env,
         jobject obj /* this  */,
         jbyteArray rawBuffer,
@@ -49,14 +50,103 @@ Java_com_android_camera_imageprocessor_PostProcessor_get8bitDataFromRAW10(
     unsigned char* rawBuffer_data = (unsigned char*)rawBuffer_jbyte;
 
     result_buffer_data[0] = rawBuffer_data[0];
-    for (int i=1, j=1; i<rawBuffer_len; i++) {
-        if (i % 5 == 0)
-            continue;
-        result_buffer_data[j] = rawBuffer_data[i];
-        j++;
-    }
-    return 0;
+    int j = 1;
+    std::ofstream fout;
+    fout.open("/mnt/sdcard/result_buffer0.txt");
+    fout << "test" << j << std::endl;
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+    fout.close();
 
+    for (int i=1; i<rawBuffer_len; i++) {
+        if ((i+1) % 5 == 0) {
+            //nothing here
+        }
+        else {
+            result_buffer_data[j] = rawBuffer_data[i];
+            j++;
+        }
+    }
+
+
+    std::ofstream fout1;
+    fout1.open("/mnt/sdcard/result_buffer.txt");
+    fout1 << "test" << j << std::endl;
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+    fout1.close();
+    return 0;
+}
+
+
+jint
+//JNICALL
+Java_com_android_camera_imageprocessor_PostProcessor_convertAndSaveRAW10Native(
+        JNIEnv *env,
+        jobject obj /* this  */,
+        jbyteArray rawBuffer,
+        jbyteArray maskBuffer,
+        jstring jSavePath) {
+
+    std::string savePath = ConvertJString(env, jSavePath);
+    const char* filename_c_str = savePath.c_str();
+
+    int imH = 3016;
+    int imW = 4032;
+    const uint8_t lut[256] = {0, 3, 7, 11, 15, 19, 22, 26, 29, 33, 36, 40, 43, 47, 50, 53, 56, 59, 62, 65, 68, 71, 74, 77, 80, 82, 85, 87, 90, 92, 95, 97, 100, 102, 104, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 128, 129, 131, 133, 134, 136, 138, 139, 141, 143, 144, 146, 147, 148, 150, 151, 153, 154, 155, 157, 158, 159, 160, 161, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 182, 183, 184, 185, 186, 187, 187, 188, 189, 190, 191, 191, 192, 193, 193, 194, 195, 195, 196, 197, 197, 198, 198, 199, 200, 200, 201, 201, 202, 202, 203, 203, 204, 204, 205, 205, 205, 206, 206, 207, 207, 207, 208, 208, 208, 209, 209, 210, 210, 210, 211, 211, 211, 212, 212, 213, 213, 213, 214, 214, 214, 215, 215, 216, 216, 216, 217, 217, 217, 218, 218, 219, 219, 219, 220, 220, 221, 221, 221, 222, 222, 222, 223, 223, 224, 224, 224, 225, 225, 225, 226, 226, 227, 227, 227, 228, 228, 228, 229, 229, 230, 230, 230, 231, 231, 232, 232, 232, 233, 233, 233, 234, 234, 235, 235, 235, 236, 236, 236, 237, 237, 238, 238, 238, 239, 239, 240, 240, 240, 241, 241, 241, 242, 242, 243, 243, 243, 244, 244, 245, 245, 245, 246, 246, 246, 247, 247, 248, 248, 248, 249, 249, 250, 250, 250, 251, 251, 251, 252, 252, 253, 253, 253, 254, 254, 255};
+    jbyte* rawBuffer_jbyte = env->GetByteArrayElements(rawBuffer, NULL);
+    jint rawBuffer_len = env->GetArrayLength(rawBuffer);
+
+    if (rawBuffer_len % 5 != 0)
+        return -1;
+    unsigned char* rawBuffer_data = (unsigned char*)rawBuffer_jbyte;
+
+
+//    jbyte* resultBuffer_jbyte = env->GetByteArrayElements(resultBuffer, NULL);
+    unsigned char* result_buffer = new unsigned char[imH*imW];
+
+    jbyte* maskBuffer_jbyte = env->GetByteArrayElements(maskBuffer, NULL);
+    float* mask_data = (float*)maskBuffer_jbyte;
+
+
+
+//     std::ofstream fout;
+//    fout.open("/mnt/sdcard/result_buffer0.txt");
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+//    fout.close();
+        int black_level = 14;
+    int count = 0;
+
+    int j = 0;
+    for (int i=0; i<rawBuffer_len; i++) {
+        if ((i+1) % 5 == 0) {
+            //nothing here
+        }
+        else {
+            float val = rawBuffer_data[i] - black_level;
+//            if (val < 0)
+//                val = 0;
+
+            val = std::max(val, 0.f);
+            val = val * mask_data[j];
+//            if (mask_data[j] < 1.0f || mask_data[j] > 5)
+//            {
+//                count ++;
+//            }
+            val = std::min(cvRound(val), 255);
+            result_buffer[j] = lut[(uint8_t)val];
+            j++;
+        }
+    }
+
+    cv::Mat res = cv::Mat(imH, imW, CV_8U); //, &yBuffer_data[0])
+    memcpy(res.data, result_buffer, imH*imW);
+    cv::imwrite(filename_c_str, res);
+    delete result_buffer;
+//    std::ofstream fout1;
+//    fout1.open("/mnt/sdcard/result_buffer.txt");
+//    fout1 << "test" << count << std::endl;
+//    fout.write((char*)result_buffer, imH*imW+(imH*imW)/2);
+//    fout1.close();
+    return 0;
 }
 
 jint
