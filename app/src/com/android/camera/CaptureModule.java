@@ -269,7 +269,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             new CameraCharacteristics.Key<>("org.codeaurora.qcamera3.hfr.sizes", int[].class);
 
     private boolean[] mTakingPicture = new boolean[MAX_NUM_CAM];
-    private int mControlAFMode = CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+    private int mControlAFMode = CameraMetadata.CONTROL_AF_MODE_AUTO;
     private int mLastResultAFState = -1;
     private Rect[] mCropRegion = new Rect[MAX_NUM_CAM];
     private boolean mAutoFocusRegionSupported;
@@ -1958,10 +1958,10 @@ public class CaptureModule implements CameraModule, PhotoController,
         try {
             CaptureRequest.Builder builder = getRequestBuilder(id);
             builder.setTag(id);
-            addPreviewSurface(builder, null, id);
+//            addPreviewSurface(builder, null, id);
 
 //            applySettingsForUnlockFocus(builder, id);
-            mCaptureSession[id].capture(builder.build(), mCaptureCallback, mCameraHandler);
+//            mCaptureSession[id].capture(builder.build(), mCaptureCallback, mCameraHandler);
             mState[id] = STATE_PREVIEW;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -4487,8 +4487,8 @@ public class CaptureModule implements CameraModule, PhotoController,
             Log.v(TAG, "cancelTouchFocus " + id);
         }
         mState[id] = STATE_PREVIEW;
-        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-        setAFModeToPreview(id, mControlAFMode);
+//        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+//        setAFModeToPreview(id, mControlAFMode);
     }
 
     private MeteringRectangle[] afaeRectangle(float x, float y, int width, int height,
