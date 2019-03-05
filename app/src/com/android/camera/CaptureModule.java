@@ -791,9 +791,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
                 // AF_PASSIVE is added for continous auto focus mode
                 if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED == afState ||
-                        CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED == afState ||
+//                        CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED == afState ||
                         CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED == afState ||
-                        CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED == afState ||
+//                        CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED == afState ||
                         (mLockRequestHashCode[id] == result.getRequest().hashCode() &&
                                 afState == CaptureResult.CONTROL_AF_STATE_INACTIVE)) {
                     if(id == MONO_ID && getCameraMode() == DUAL_MODE && isBackCamera()) {
@@ -1548,10 +1548,10 @@ public class CaptureModule implements CameraModule, PhotoController,
             switch (getCameraMode()) {
                 case DUAL_MODE:
                     mShotStartTime = System.currentTimeMillis();
-//                    lockFocus(BAYER_ID);
-//                    lockFocus(MONO_ID);
-                    captureStillPicture(BAYER_ID);
-                    captureStillPicture(MONO_ID);
+                    lockFocus(BAYER_ID);
+                    lockFocus(MONO_ID);
+//                    captureStillPicture(BAYER_ID);
+//                    captureStillPicture(MONO_ID);
                     break;
                 case BAYER_MODE:
                     if(takeZSLPicture(BAYER_ID)) {
