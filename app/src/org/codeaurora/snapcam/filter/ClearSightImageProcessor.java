@@ -631,10 +631,11 @@ public class ClearSightImageProcessor {
         }
 
         private void checkAndOver(boolean byTimeout){
+
             boolean bothTaken = mNumImagesToProcess[CAM_TYPE_BAYER] == 0 && mNumImagesToProcess[CAM_TYPE_MONO] == 0;
             if (bothTaken ) {
                 if (!byTimeout) {
-                    if (mCallback != null) {
+//                    if (mCallback != null) {
                         final Image bayerImage = mBayerImages.poll();
                         final Image monoImage = mMonoImages.poll();
                         if (bayerImage != null && monoImage != null) {
@@ -667,7 +668,8 @@ public class ClearSightImageProcessor {
 
                             mCallback.onClearSightFailure(null);
                         }
-                    }
+//                    }
+
 
                 }
             }
@@ -819,7 +821,6 @@ public class ClearSightImageProcessor {
 //                }
 //                image.close();
                 mNumImagesToProcess[msg.arg1]--;
-                checkAndOver(false);
 
             } else if(msg.what == MSG_NEW_CAPTURE_FAIL) {
                 Log.d(TAG, "processNewCaptureEvent - new failed result: " + msg.arg1);
@@ -829,6 +830,8 @@ public class ClearSightImageProcessor {
                 TotalCaptureResult result = (TotalCaptureResult) msg.obj;
 //                resultQueue.add(result);
             }
+            checkAndOver(false);
+
             kickTimeout();
 
 //            Log.d(TAG, "processNewCaptureEvent - cam: " + msg.arg1 + " num imgs: "
