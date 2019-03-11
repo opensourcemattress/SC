@@ -754,7 +754,9 @@ public class CaptureModule implements CameraModule, PhotoController,
             mCameraOpened[id] = true;
 
             if (isBackCamera() && getCameraMode() == DUAL_MODE && id == BAYER_ID) {
-                Message msg = mCameraHandler.obtainMessage(OPEN_CAMERA, MONO_ID, 0);
+                Message msg = mCameraHandler.obtainMessage(OPEN_CAMERA, MONO_ID);
+
+//                Message msg = mCameraHandler.obtainMessage(OPEN_CAMERA, MONO_ID, 0);
                 mCameraHandler.sendMessage(msg);
             } else {
                 mCamerasOpened = true;
@@ -1648,7 +1650,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
         mTakingPicture[id] = true;
         if (mState[id] == STATE_WAITING_TOUCH_FOCUS) {
-            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[id]);
+//            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[id]);
+            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, id);
+
             mState[id] = STATE_WAITING_AF_LOCK;
             mLockRequestHashCode[id] = 0;
             return;
@@ -1693,7 +1697,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             setAFModeToPreview(id, mControlAFMode);
             Message msg = Message.obtain();
             msg.what = CANCEL_TOUCH_FOCUS;
-            msg.arg1 = id;
+            msg.obj = id;
             mCameraHandler.sendMessageDelayed(msg, CANCEL_TOUCH_FOCUS_DELAY);
             //            mCameraHandler.sendMessageDelayed(message, CANCEL_TOUCH_FOCUS_DELAY);
 
@@ -2579,16 +2583,16 @@ public class CaptureModule implements CameraModule, PhotoController,
             switch (getCameraMode()) {
                 case DUAL_MODE:
 //                case BAYER_MODE:
-                    msg.arg1 = BAYER_ID;
+                    msg.obj = BAYER_ID;
                     mCameraHandler.sendMessage(msg);
                     break;
                 case MONO_MODE:
-                    msg.arg1 = MONO_ID;
+                    msg.obj = MONO_ID;
                     mCameraHandler.sendMessage(msg);
                     break;
             }
         } else {
-            msg.arg1 = FRONT_ID;
+            msg.obj = FRONT_ID;
             mCameraHandler.sendMessage(msg);
         }
         mUI.showSurfaceView();
@@ -3295,7 +3299,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
             requestAudioFocus();
             mUI.clearFocus();
-            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[cameraId]);
+            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, cameraId);
+
+//            mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[cameraId]);
             mState[cameraId] = STATE_PREVIEW;
             mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
             closePreviewSession();
@@ -4473,9 +4479,12 @@ public class CaptureModule implements CameraModule, PhotoController,
         Point p = mUI.getSurfaceViewSize();
         int width = p.x;
         int height = p.y;
-        mAFRegions[id] = afaeRectangle(x, y, width, height, 1f, mCropRegion[id]);
-        mAERegions[id] = afaeRectangle(x, y, width, height, 1.5f, mCropRegion[id]);
-        mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[id]);
+//        mAFRegions[id] = afaeRectangle(x, y, width, height, 1f, mCropRegion[id]);
+//        mAERegions[id] = afaeRectangle(x, y, width, height, 1.5f, mCropRegion[id]);
+//        mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[id]);
+        mAFRegions[id] = afaeRectangle(x, y, width, height, 0.5f, mCropRegion[id]);
+        mAERegions[id] = afaeRectangle(x, y, width, height, 1.0f, mCropRegion[id]);
+        mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, id);
         autoFocusTrigger(id);
     }
 
@@ -4782,7 +4791,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 
         @Override
         public void handleMessage(Message msg) {
-            int id = msg.arg1;
+            int id = (Integer)msg.obj;
             switch (msg.what) {
                 case OPEN_CAMERA:
                     openCamera(id);
