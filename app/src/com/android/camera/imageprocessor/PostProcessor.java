@@ -112,7 +112,7 @@ public class PostProcessor{
     public static final int FILTER_MAX = 8;
 
     //BestPicture requires 10 which is the biggest among filters
-    private static final int MAX_REQUIRED_IMAGE_NUM = 11;
+    private static final int MAX_REQUIRED_IMAGE_NUM = 20;
     private int mCurrentNumImage = 0;
     private ImageFilter mFilter;
     private int mFilterIndex;

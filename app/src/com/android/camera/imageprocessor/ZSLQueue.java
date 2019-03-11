@@ -49,7 +49,7 @@ import java.util.concurrent.Semaphore;
 
 public class ZSLQueue {
     private static final String CIRCULAR_BUFFER_SIZE_PERSIST = "persist.camera.zsl.buffer.size";
-    private static final int CIRCULAR_BUFFER_SIZE_DEFAULT = 8;
+    private static final int CIRCULAR_BUFFER_SIZE_DEFAULT = 15;
     private int mCircularBufferSize = CIRCULAR_BUFFER_SIZE_DEFAULT;
     private ImageItem[] mBuffer;
     private int mImageHead;
@@ -460,7 +460,7 @@ public class ZSLQueue {
         synchronized (mLock) {
             int index = mImageHead;
             int bestIndex = 0;
-            long bestDiff = 10000000L;
+            long bestDiff = 10000000000L;
             for (int i=0; i<mBuffer.length; i++) {
                 if (mBuffer[i] != null && mBuffer[i].isValid()) {
                     long currDiff = Math.abs(mBuffer[i].getImage().getTimestamp() - imTimestamp);
