@@ -48,6 +48,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.ImageWriter;
 import android.media.MediaScannerConnection;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -515,6 +516,12 @@ public class PostProcessor{
                 imageItemBayer = mSecondZSLQueue.tryToGetNearestItem(imTimestamp);
             }
         }
+
+//        String rawPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/DCIM/Camera/raw/";
+//        File rawDir = new File(rawPath);
+        //TODO: properly handle directories and filenames
+        File rawDir = new File("/mnt/sdcard/DCIM/Camera/raw/");
+        rawDir.mkdirs();
 //        CaptureResult previewCaptureResult = null;
 //        if (isBayer)
 //            previewCaptureResult = mController.getPreviewCaptureResultBayer();
@@ -535,6 +542,7 @@ public class PostProcessor{
 //        }
             long time = System.currentTimeMillis() - startTime;
 
+
         if (imageItemMono != null && imageItemBayer != null) {
             if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
 
@@ -550,7 +558,7 @@ public class PostProcessor{
 
             if (imageMonoRaw != null) {
                 byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
-                String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_m_raw.png";
+                String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_m.png";
 
                 convertAndSaveRAW10Native(rawData, maskBytes, filename);
 //                byte[] resultData = new byte[4032*3016];
@@ -563,30 +571,31 @@ public class PostProcessor{
                 imageMonoRaw.close();
             }
             if (imageMono != null) {
-                new Thread(new Runnable() {
-                    public void run() {
-//                        long duration = System.currentTimeMillis() - startTime;
-//                        String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_" + String.valueOf(duration) +  "_m.jpg";
-
-                        String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
-
-                        ClearSightImageProcessor.imwriteMono(imageMono, filename);
-                        imageMono.close();
-
-                        String[] files = new String[]{filename};
-                        MediaScannerConnection.scanFile(mActivity, files, null, null);
-
-//                        long anotherDuration = System.currentTimeMillis() - startTime;
-//                        File resDuration = new File(filename + "_" + String.valueOf(anotherDuration));
+                imageMono.close();
+//                new Thread(new Runnable() {
+//                    public void run() {
+////                        long duration = System.currentTimeMillis() - startTime;
+////                        String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_" + String.valueOf(duration) +  "_m.jpg";
 //
-//                        try {
-//                            resDuration.createNewFile();
-//                        } catch (IOException e) {
-//                            e.printStackTrace();
-//                        }
-                    }
-
-                    }).start();
+//                        String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
+//
+//                        ClearSightImageProcessor.imwriteMono(imageMono, filename);
+//                        imageMono.close();
+//
+//                        String[] files = new String[]{filename};
+//                        MediaScannerConnection.scanFile(mActivity, files, null, null);
+//
+////                        long anotherDuration = System.currentTimeMillis() - startTime;
+////                        File resDuration = new File(filename + "_" + String.valueOf(anotherDuration));
+////
+////                        try {
+////                            resDuration.createNewFile();
+////                        } catch (IOException e) {
+////                            e.printStackTrace();
+////                        }
+//                    }
+//
+//                    }).start();
             }
             if (imageBayer != null) {
                 new Thread(new Runnable() {

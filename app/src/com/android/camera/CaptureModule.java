@@ -269,7 +269,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             new CameraCharacteristics.Key<>("org.codeaurora.qcamera3.hfr.sizes", int[].class);
 
     private boolean[] mTakingPicture = new boolean[MAX_NUM_CAM];
-    private int mControlAFMode = CameraMetadata.CONTROL_AF_MODE_AUTO;
+    private int mControlAFMode = CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
     private int mLastResultAFState = -1;
     private Rect[] mCropRegion = new Rect[MAX_NUM_CAM];
     private boolean mAutoFocusRegionSupported;
@@ -1975,10 +1975,10 @@ public class CaptureModule implements CameraModule, PhotoController,
                     }
                 });
             }
-//            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
 //            applyFlash(mPreviewRequestBuilder[id], id);
             applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
-//            setAFModeToPreview(id, mControlAFMode);
+            setAFModeToPreview(id, mControlAFMode);
             mTakingPicture[id] = false;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -2180,10 +2180,11 @@ public class CaptureModule implements CameraModule, PhotoController,
 //        else
 //            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
 
-        builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
-        builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-        builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-
+        if (id == MONO_ID) {
+            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+            builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+        }
 
         applyFaceDetection(builder);
         applyWhiteBalance(builder);
@@ -4482,8 +4483,8 @@ public class CaptureModule implements CameraModule, PhotoController,
 //        mAFRegions[id] = afaeRectangle(x, y, width, height, 1f, mCropRegion[id]);
 //        mAERegions[id] = afaeRectangle(x, y, width, height, 1.5f, mCropRegion[id]);
 //        mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, mCameraId[id]);
-        mAFRegions[id] = afaeRectangle(x, y, width, height, 0.5f, mCropRegion[id]);
-        mAERegions[id] = afaeRectangle(x, y, width, height, 1.0f, mCropRegion[id]);
+        mAFRegions[id] = afaeRectangle(x, y, width, height, 0.4f, mCropRegion[id]);
+        mAERegions[id] = afaeRectangle(x, y, width, height, 0.8f, mCropRegion[id]);
         mCameraHandler.removeMessages(CANCEL_TOUCH_FOCUS, id);
         autoFocusTrigger(id);
     }
@@ -4496,8 +4497,8 @@ public class CaptureModule implements CameraModule, PhotoController,
             Log.v(TAG, "cancelTouchFocus " + id);
         }
         mState[id] = STATE_PREVIEW;
-//        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-//        setAFModeToPreview(id, mControlAFMode);
+        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+        setAFModeToPreview(id, mControlAFMode);
     }
 
     private MeteringRectangle[] afaeRectangle(float x, float y, int width, int height,
