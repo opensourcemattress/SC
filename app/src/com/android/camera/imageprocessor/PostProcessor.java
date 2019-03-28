@@ -199,6 +199,10 @@ public class PostProcessor{
         return mImageHandlerTask;
     }
 
+    public boolean mStartCounting = false;
+    public int mMonoFramesCount = 0;
+
+
     private class ImageWrapper {
         Image mImage;
         Image mRawImage;
@@ -402,6 +406,8 @@ public class PostProcessor{
                 Image rawImage = mImageWrapper.getRawImage();
                 if (mUseZSL) {
                     if (mZSLQueue != null) {
+                        if (mStartCounting)
+                            mMonoFramesCount += 1;
                         mZSLQueue.add(image, rawImage);
                     }
                 }
@@ -502,12 +508,22 @@ public class PostProcessor{
 //        }
 //    }
 
-    public boolean takeZSLPicture(boolean isBayer, final long startTime) {
+    public boolean takeZSLPicture(boolean isBayer, final long startTime, final long focusTime, final long captureTime) {
         mController.setJpegImageData(null);
         ZSLQueue.ImageItem imageItemMono = null;
         ZSLQueue.ImageItem imageItemBayer = null;
 
 //        imageItemMono = mZSLQueue.tryToGetMatchingItem(mImageHandlerTask.getmMutureLock());
+
+        int lol = mMonoFramesCount;
+        while (mMonoFramesCount < 20) {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        mStartCounting = false;
 
         synchronized (mSecondZSLQueue.getmLock()) {
             imageItemMono = mZSLQueue.tryToGetBestItemParallel();
@@ -557,6 +573,8 @@ public class PostProcessor{
             final Image imageBayer = imageItemBayer.getImage();
 
             if (imageMonoRaw != null) {
+                long anotherDuration = System.currentTimeMillis() - startTime;
+
                 byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
                 String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_m.png";
 
@@ -571,7 +589,9 @@ public class PostProcessor{
                 imageMonoRaw.close();
             }
             if (imageMono != null) {
+                long anotherDuration = System.currentTimeMillis() - startTime;
                 imageMono.close();
+
 //                new Thread(new Runnable() {
 //                    public void run() {
 ////                        long duration = System.currentTimeMillis() - startTime;
@@ -600,7 +620,7 @@ public class PostProcessor{
             if (imageBayer != null) {
                 new Thread(new Runnable() {
                     public void run() {
-//                        long duration = System.currentTimeMillis() - startTime;
+                        long duration = System.currentTimeMillis() - startTime;
                         String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_c.jpg";
 
                         ClearSightImageProcessor.imwriteYUVimage(imageBayer, filename);
