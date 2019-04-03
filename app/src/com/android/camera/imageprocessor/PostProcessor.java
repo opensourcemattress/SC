@@ -158,6 +158,9 @@ public class PostProcessor{
     private int mPendingContinuousRequestCount = 0;
     public int mMaxRequiredImageNum;
 
+    public float mColorLensDistance = 0.0f;
+    public float mMonoLensDistance = 0.0f;
+
     public ZSLQueue mSecondZSLQueue;
 
     public int getMaxRequiredImageNum() {
@@ -515,7 +518,6 @@ public class PostProcessor{
 
 //        imageItemMono = mZSLQueue.tryToGetMatchingItem(mImageHandlerTask.getmMutureLock());
 
-        int lol = mMonoFramesCount;
         while (mMonoFramesCount < 20) {
             try {
                 Thread.sleep(50);
@@ -559,7 +561,7 @@ public class PostProcessor{
             long time = System.currentTimeMillis() - startTime;
 
 
-        if (imageItemMono != null && imageItemBayer != null) {
+        if (imageItemMono != null && imageItemMono.getRawImage() != null &&  imageItemBayer != null) {
             if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
 
             long captureStartTime = System.currentTimeMillis();
@@ -573,12 +575,18 @@ public class PostProcessor{
             final Image imageBayer = imageItemBayer.getImage();
 
             if (imageMonoRaw != null) {
-                long anotherDuration = System.currentTimeMillis() - startTime;
+                Log.d(TAG, "raw is here");
+                new Thread(new Runnable() {
+                    public void run() {
+                        long anotherDuration = System.currentTimeMillis() - startTime;
 
-                byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
-                String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_m.png";
+                        byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
+                        String lensDistance = "";
+//                        String lensDistance = String.format("_%05.02f", mMonoLensDistance);
 
-                convertAndSaveRAW10Native(rawData, maskBytes, filename);
+                        String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title + lensDistance + "_m.png";
+
+                        convertAndSaveRAW10Native(rawData, maskBytes, filename);
 //                byte[] resultData = new byte[4032*3016];
 //                get8bitDataFromRAW10(rawData, resultData);
 //                Mat test = new Mat(3016,4032, CvType.CV_8U);
@@ -586,7 +594,8 @@ public class PostProcessor{
 //
 //                Imgcodecs.imwrite(filename, test);
 
-                imageMonoRaw.close();
+                        imageMonoRaw.close();
+                    }}).start();
             }
             if (imageMono != null) {
                 long anotherDuration = System.currentTimeMillis() - startTime;
@@ -621,7 +630,11 @@ public class PostProcessor{
                 new Thread(new Runnable() {
                     public void run() {
                         long duration = System.currentTimeMillis() - startTime;
-                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_c.jpg";
+
+                        String lensDistance = "";
+//                        String lensDistance = String.format("_%05.02f", mColorLensDistance);
+
+                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title + lensDistance +  "_c.jpg";
 
                         ClearSightImageProcessor.imwriteYUVimage(imageBayer, filename);
                         imageBayer.close();
@@ -647,6 +660,8 @@ public class PostProcessor{
                 imageItemBayer.closeImage();
             if (imageItemMono != null)
                 imageItemMono.closeImage();
+            if (imageItemMono.getRawImage() != null)
+                imageItemMono.getRawImage().close();
             return false;
 
 //            if(DEBUG_ZSL) Log.d(TAG, "No good item in queue, register the request for the future");

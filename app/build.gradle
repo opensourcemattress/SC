@@ -1,11 +1,17 @@
 //Top-level buildscript information
 buildscript {
     repositories {
+        jcenter()
         mavenCentral()
         google()
+        maven {
+            url "https://jitpack.io"
+        }
+
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.0'
+        classpath 'com.android.tools.build:gradle:3.3.2'
+        classpath 'org.codehaus.groovy:groovy-android-gradle-plugin:2.0.1'
     }
 
 }
@@ -41,16 +47,26 @@ gradle.projectsEvaluated {
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 23
+    signingConfigs {
+        config {
+            keyAlias 'ent'
+            keyPassword '6hvk7rUj3V'
+            storeFile file('/home/vladimir/wrk/ent.jks')
+            storePassword '6hvk7rUj3V'
+        }
+    }
+    compileSdkVersion 26
     //buildToolsVersion "27.0.3"
 //    buildToolsVersion "28.0.0"
-
-
-
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+        ignoreWarnings true //false
+    }
     defaultConfig {
         //renderscriptTargetApi 23
         minSdkVersion 23
-        targetSdkVersion 23
+        targetSdkVersion 26
 //        ndk {
 //            moduleName "libjni_snapcammosaic"
 //        }
@@ -65,8 +81,6 @@ android {
             }
         }
     }
-
-
     sourceSets {
         main {
             jni.srcDirs = ['cpp/source']
@@ -78,7 +92,6 @@ android {
             jniLibs.srcDirs = ['libs']
         }
     }
-
     externalNativeBuild {
         cmake {
             path "CMakeLists.txt"
@@ -90,14 +103,19 @@ dependencies {
     implementation files('xmp.jar')
     compileOnly fileTree(include: ['framework.jar'], dir: 'system_libraries')
     implementation fileTree(include: ['*.so'], dir: 'libs')
-    implementation 'com.android.support:support-v4:23+'
-    implementation 'com.android.support:support-v13:23+'
-//    implementation "org.bytedeco:javacv:1.4.1"
-//    implementation "org.bytedeco.javacpp-presets:opencv:3.4.1-1.4.1:android-arm"
+    implementation 'com.android.support:support-v4:26+'
+    implementation 'com.android.support:support-v13:26+'
+    //    implementation "org.bytedeco:javacv:1.4.1"
+    //    implementation "org.bytedeco.javacpp-presets:opencv:3.4.1-1.4.1:android-arm"
     implementation project(':openCVLibrary342')
 }
 
 
 repositories {
-    google()
+    jcenter()
+        mavenCentral()
+        google()
+        maven {
+            url "https://jitpack.io"
+        }
 }

@@ -876,6 +876,8 @@ public class CaptureModule implements CameraModule, PhotoController,
                 Log.d(TAG, "STATE_WAITING_AE_LOCK id: " + id + " afState: " + afState + " aeState:" + aeState);
                 if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_LOCKED) {
                     mColorLensDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+                    if (mColorLensDistance < 0.005)
+                        mColorLensDistance = 0.005f;
 //                    setFocusDistanceToPreview(MONO_ID, mColorLensDistance);
 //                    applyFocusDistance(mMonoCaptureBuilder, mColorLensDistance);
                     captureMono();
@@ -915,9 +917,14 @@ public class CaptureModule implements CameraModule, PhotoController,
         }
 
         // Seems like for some reason monochrome sensor lens distance sometimes is different by 0.35something
+        boolean macroInterval = (mColorLensDistance > 10) && currDist >= 10;
+        boolean infInterval = (mColorLensDistance < 0.005) && currDist <= 0.005;
+
         if (
-                (Math.abs(currDist - mColorLensDistance) <
-                        0.36 || mColorLensDistance > 10)
+                (Math.abs(currDist - mColorLensDistance) < 0.1 ||
+                        macroInterval ||
+                        infInterval
+                )
                         && mState[MONO_ID] != STATE_LENS_STABLE) {
 //            long time = System.currentTimeMillis() - mStartTime;
 
@@ -926,7 +933,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 
             mMonoFramesCount += 1;
 
-            if (mMonoFramesCount > 2) {
+            if (mMonoFramesCount > 0) {
                 mMonoFramesCount = 0;
                 mState[MONO_ID] = STATE_LENS_STABLE;
 
@@ -935,14 +942,18 @@ public class CaptureModule implements CameraModule, PhotoController,
                 mPostProcessors[MONO_ID].mStartCounting = true;
                 mPostProcessors[MONO_ID].mMonoFramesCount = 0;
 
-                takeZSLPicture(MONO_ID);
 
-                mMonoLensDistance = currDist;
+                mPostProcessors[MONO_ID].mColorLensDistance = mColorLensDistance;
+                mPostProcessors[MONO_ID].mMonoLensDistance = currDist;
+
+                takeZSLPicture(MONO_ID);
                 try {
                     mCaptureSession[MONO_ID].stopRepeating();
                 } catch (CameraAccessException e) {
                     e.printStackTrace();
                 }
+                mMonoLensDistance = currDist;
+
             }
 //            captureStillPicture(MONO_ID);
 //            captureStillPicture(BAYER_ID);
@@ -1921,6 +1932,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                             mSupportedRawPictureSize.getHeight(), ImageFormat.RAW10, mPostProcessors[i].getMaxRequiredImageNum());
                     mPostProcessors[i].setRawImageReader(mRawImageReader[i]);
                 }
+
                 mImageReader[i].setOnImageAvailableListener(mPostProcessors[i].getImageHandler(), mImageAvailableHandlers[i]);
                 mPostProcessors[i].onImageReaderReady(mImageReader[i], mSupportedMaxPictureSize, mPictureSize);
             }
@@ -2203,8 +2215,9 @@ public class CaptureModule implements CameraModule, PhotoController,
             builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
             builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
         }
-        else
+        else {
             applyNoiseReduction(builder);
+        }
 
         applyFaceDetection(builder);
         applyWhiteBalance(builder);
@@ -4893,6 +4906,11 @@ public class CaptureModule implements CameraModule, PhotoController,
     @Override
     public void onReleaseShutterLock() {
         Log.d(TAG, "onReleaseShutterLock");
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         unlockFocus(BAYER_ID);
         unlockFocus(MONO_ID);
     }
