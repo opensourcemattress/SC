@@ -75,8 +75,8 @@ android {
             cmake {
                 cppFlags "-std=c++11 -lz -fopenmp  -frtti -O3 -I" + file("cpp/include").absolutePath
                 //arguments '-DANDROID_TOOLCHAIN=gcc' '-DANDROID_STL=gnustl_static'
-                arguments '-DANDROID_STL=gnustl_static'
-
+//                arguments '-DANDROID_STL=gnustl_static'
+                arguments "-DOpenCV_DIR=opencv_dir"
                 abiFilters 'arm64-v8a'
             }
         }
@@ -107,7 +107,8 @@ dependencies {
     implementation 'com.android.support:support-v13:26+'
     //    implementation "org.bytedeco:javacv:1.4.1"
     //    implementation "org.bytedeco.javacpp-presets:opencv:3.4.1-1.4.1:android-arm"
-    implementation project(':openCVLibrary342')
+//    implementation project(':openCVLibrary342')
+    implementation project(':opencv41')
 }
 
 

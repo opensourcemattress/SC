@@ -140,7 +140,7 @@ Java_com_android_camera_imageprocessor_PostProcessor_convertAndSaveRAW10Native(
     cv::Mat res = cv::Mat(imH, imW, CV_8U); //, &yBuffer_data[0])
     memcpy(res.data, result_buffer, imH*imW);
     cv::imwrite(filename_c_str, res);
-    delete result_buffer;
+    delete[] result_buffer;
 //    std::ofstream fout1;
 //    fout1.open("/mnt/sdcard/result_buffer.txt");
 //    fout1 << "test" << count << std::endl;
@@ -323,7 +323,7 @@ Java_com_android_camera_imageprocessor_PostProcessor_imwriteYUVnative(
     begin = std::chrono::high_resolution_clock::now();
 
     std::vector<int> compression_params;
-    compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
+    compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
     compression_params.push_back(100);
 
     cv::imwrite(test, res, compression_params);

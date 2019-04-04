@@ -876,8 +876,8 @@ public class CaptureModule implements CameraModule, PhotoController,
                 Log.d(TAG, "STATE_WAITING_AE_LOCK id: " + id + " afState: " + afState + " aeState:" + aeState);
                 if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_LOCKED) {
                     mColorLensDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
-                    if (mColorLensDistance < 0.005)
-                        mColorLensDistance = 0.005f;
+                    if (mColorLensDistance < mLensDistanceThreshold)
+                        mColorLensDistance = mLensDistanceThreshold;
 //                    setFocusDistanceToPreview(MONO_ID, mColorLensDistance);
 //                    applyFocusDistance(mMonoCaptureBuilder, mColorLensDistance);
                     captureMono();
@@ -900,6 +900,7 @@ public class CaptureModule implements CameraModule, PhotoController,
     }
     private float mColorLensDistance = -1.0f;
     private float mMonoLensDistance = -1.0f;
+    private float mLensDistanceThreshold = 0.001f;
 
     private long mFocusTime = 0;
     private long mCaptureTime = 0;
@@ -918,10 +919,10 @@ public class CaptureModule implements CameraModule, PhotoController,
 
         // Seems like for some reason monochrome sensor lens distance sometimes is different by 0.35something
         boolean macroInterval = (mColorLensDistance > 10) && currDist >= 10;
-        boolean infInterval = (mColorLensDistance < 0.005) && currDist <= 0.005;
+        boolean infInterval = (mColorLensDistance < mLensDistanceThreshold) && currDist <= mLensDistanceThreshold;
 
         if (
-                (Math.abs(currDist - mColorLensDistance) < 0.1 ||
+                (Math.abs(currDist - mColorLensDistance) < 0.001 ||
                         macroInterval ||
                         infInterval
                 )
