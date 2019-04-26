@@ -1,11 +1,17 @@
 //Top-level buildscript information
 buildscript {
     repositories {
+        jcenter()
         mavenCentral()
         google()
+        maven {
+            url "https://jitpack.io"
+        }
+
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.0'
+        classpath 'com.android.tools.build:gradle:3.3.2'
+        classpath 'org.codehaus.groovy:groovy-android-gradle-plugin:2.0.1'
     }
 
 }
@@ -41,25 +47,53 @@ gradle.projectsEvaluated {
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 23
-    //buildToolsVersion "27.0.3"
-//    buildToolsVersion "28.0.0"
+    signingConfigs {
+        release {
+            storeFile file(RELEASE_STORE_FILE)
+            storePassword RELEASE_STORE_PASSWORD
+            keyAlias RELEASE_KEY_ALIAS
+            keyPassword RELEASE_KEY_PASSWORD
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
 
+
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+        ignoreWarnings true //false
+    }
+
+    compileSdkVersion 26
 
 
     defaultConfig {
         //renderscriptTargetApi 23
         minSdkVersion 23
-        targetSdkVersion 23
+        targetSdkVersion 26
 //        ndk {
 //            moduleName "libjni_snapcammosaic"
 //        }
 
+        externalNativeBuild {
+            cmake {
+                cppFlags "-fopenmp  -frtti -O3 -I" + file("cpp/include").absolutePath
+                //arguments '-DANDROID_TOOLCHAIN=gcc' '-DANDROID_STL=gnustl_static'
+//                arguments '-DANDROID_STL=gnustl_static'
+                arguments "-DOpenCV_DIR=opencv_dir"
+                abiFilters 'arm64-v8a'
+            }
+        }
     }
 
 
     sourceSets {
         main {
+            jni.srcDirs = ['cpp/source']
             manifest.srcFile 'AndroidManifest.xml'
             java.srcDirs = ['src']
             renderscript.srcDirs = ['rs']
@@ -68,21 +102,29 @@ android {
             jniLibs.srcDirs = ['libs']
         }
     }
-
 }
+
+
 
 dependencies {
     implementation files('xmp.jar')
     compileOnly fileTree(include: ['framework.jar'], dir: 'system_libraries')
     implementation fileTree(include: ['*.so'], dir: 'libs')
-    implementation 'com.android.support:support-v4:23+'
-    implementation 'com.android.support:support-v13:23+'
-//    implementation "org.bytedeco:javacv:1.4.1"
-//    implementation "org.bytedeco.javacpp-presets:opencv:3.4.1-1.4.1:android-arm"
-    implementation project(':openCVLibrary342')
+    implementation 'com.android.support:support-v4:26+'
+    implementation 'com.android.support:support-v13:26+'
+    //    implementation "org.bytedeco:javacv:1.4.1"
+    //    implementation "org.bytedeco.javacpp-presets:opencv:3.4.1-1.4.1:android-arm"
+    implementation project(':opencv4')
+
+    //    implementation 'org.codehaus.groovy:groovy-all:2.4.12'
 }
 
 
 repositories {
+    jcenter()
+    mavenCentral()
+    maven {
+        url "https://jitpack.io"
+    }
     google()
 }

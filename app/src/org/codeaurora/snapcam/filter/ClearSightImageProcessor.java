@@ -182,6 +182,9 @@ public class ClearSightImageProcessor {
 
     private Context mContext;
 
+    public float mColorLensDistance = 0.0f;
+    public float mMonoLensDistance = 0.0f;
+    public int mMonoNFrames = 0;
 
     private static ClearSightImageProcessor mInstance;
 

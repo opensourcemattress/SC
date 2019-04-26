@@ -74,6 +74,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.util.Pair;
 import android.util.Range;
 import android.util.Size;
 import android.view.Gravity;
@@ -414,6 +415,7 @@ public class CaptureModule implements CameraModule, PhotoController,
     private float mBayerFocusDistance = 0.0f;
 
     private long mShotStartTime = 0L;
+
 
     public static ByteBuffer correctY(ByteBuffer yBuffer, byte[] tmpBuf) {
         int sizeY = yBuffer.capacity();
@@ -778,6 +780,7 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     };
 
+
     private void updateCaptureStateMachine(int id, CaptureResult result) {
         switch (mState[id]) {
             case STATE_PREVIEW: {
@@ -795,13 +798,16 @@ public class CaptureModule implements CameraModule, PhotoController,
                         CaptureResult.CONTROL_AF_STATE_PASSIVE_UNFOCUSED == afState ||
                         (mLockRequestHashCode[id] == result.getRequest().hashCode() &&
                                 afState == CaptureResult.CONTROL_AF_STATE_INACTIVE)) {
+
                     if(id == MONO_ID && getCameraMode() == DUAL_MODE && isBackCamera()) {
                         // in dual mode, mono AE dictated by bayer AE.
                         // if not already locked, wait for lock update from bayer
-                        if(aeState == CaptureResult.CONTROL_AE_STATE_LOCKED)
-                            checkAfAeStatesAndCapture(id);
-                        else
-                            mState[id] = STATE_WAITING_AE_LOCK;
+
+//                        if(aeState == CaptureResult.CONTROL_AE_STATE_LOCKED)
+//                            checkAfAeStatesAndCapture(id);
+//                        else
+//                            mState[id] = STATE_WAITING_AE_LOCK;
+
                     } else {
                         if ((mLockRequestHashCode[id] == result.getRequest().hashCode()) || (mLockRequestHashCode[id] == 0)) {
 
@@ -848,7 +854,15 @@ public class CaptureModule implements CameraModule, PhotoController,
                 Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
                 Log.d(TAG, "STATE_WAITING_AE_LOCK id: " + id + " afState: " + afState + " aeState:" + aeState);
                 if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_LOCKED) {
-                    checkAfAeStatesAndCapture(id);
+                    mColorLensDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+                    if (mColorLensDistance < mLensDistanceThreshold)
+                        mColorLensDistance = mLensDistanceThreshold;
+//                    setFocusDistanceToPreview(MONO_ID, mColorLensDistance);
+//                    applyFocusDistance(mMonoCaptureBuilder, mColorLensDistance);
+                    mMonoNframes = 0;
+                    mMonoNframesAfterInRightPosition = 0;
+                    captureMono();
+//                    checkAfAeStatesAndCapture(id);
                 }
                 break;
             }
@@ -867,26 +881,141 @@ public class CaptureModule implements CameraModule, PhotoController,
     }
 
 
+    private float mColorLensDistance = -1.0f;
+    private float mMonoLensDistance = -1.0f;
+    private float mLensDistanceThreshold = 1e-10f;
+
+
+
+
+    private int mMonoNframesAfterInRightPosition = 0;
+    private int mMonoNframes = 0;
+    private int[] mNeededMonoFramesArr = new int []{10, 20, 40};
+    private int mNeededMonoFramesIndex = 0;
+    private int mNeededMonoFramesTotal = 3;
+
+
+    private void checkMonoFocusAndTakeBothPictures(CaptureResult result) {
+        int currState;
+        float currDist;
+        try {
+            currState = result.get(CaptureResult.LENS_STATE);
+            currDist = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+        }
+        catch (java.lang.NullPointerException ex) {
+            return;
+        }
+
+        mMonoNframes += 1;
+
+        // Seems like for some reason monochrome sensor lens distance sometimes is different by 0.35something
+        boolean macroInterval = (mColorLensDistance > 10) && currDist >= 10;
+        boolean infInterval = (mColorLensDistance < mLensDistanceThreshold) && currDist <= mLensDistanceThreshold;
+        boolean rightPosition = mMonoNframes > 20; // if we stuck for long time we make capture even if other conditions are not satisfied and focus does not converged
+
+        if (
+                (Math.abs(currDist - mColorLensDistance) < 0.001 ||
+                        macroInterval ||
+                        infInterval ||
+                        rightPosition
+                )
+                        && mState[MONO_ID] != STATE_LENS_STABLE) {
+
+            mMonoNframesAfterInRightPosition += 1;
+
+            if (mMonoNframesAfterInRightPosition > mNeededMonoFramesArr[mNeededMonoFramesIndex]) {
+
+
+
+//            long time = System.currentTimeMillis() - mStartTime;
+                mState[MONO_ID] = STATE_LENS_STABLE;
+                mMonoLensDistance = currDist;
+                try {
+                    mCaptureSession[MONO_ID].stopRepeating();
+                } catch (CameraAccessException e) {
+                    e.printStackTrace();
+                }
+                ClearSightImageProcessor.getInstance().mMonoNFrames = mMonoNframes;
+                captureStillPicture(MONO_ID);
+                captureStillPicture(BAYER_ID);
+
+            }
+        }
+    }
+
+    private long ohNo = 0;
+    private void doNothing(CaptureResult result) {
+        int currState;
+        float currDist;
+        try {
+            currState = result.get(CaptureResult.LENS_STATE);
+            currDist = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+        }
+        catch (java.lang.NullPointerException ex) {
+            return;
+        }
+
+        ohNo += 1;
+//        mMonoNframes += 1;
+    }
+
+    private CameraCaptureSession.CaptureCallback mMonoCaptureCallback1
+            = new CameraCaptureSession.CaptureCallback() {
+
+        @Override
+        public void onCaptureProgressed(CameraCaptureSession session,
+                                        CaptureRequest request,
+                                        CaptureResult partialResult) {
+            doNothing(partialResult);
+        }
+
+        @Override
+        public void onCaptureCompleted(CameraCaptureSession session,
+                                       CaptureRequest request,
+                                       TotalCaptureResult result) {
+            doNothing(result);
+        }
+    };
+
+    private CameraCaptureSession.CaptureCallback mMonoCaptureCallback
+            = new CameraCaptureSession.CaptureCallback() {
+
+        @Override
+        public void onCaptureProgressed(CameraCaptureSession session,
+                                        CaptureRequest request,
+                                        CaptureResult partialResult) {
+            checkMonoFocusAndTakeBothPictures(partialResult);
+        }
+
+        @Override
+        public void onCaptureCompleted(CameraCaptureSession session,
+                                       CaptureRequest request,
+                                       TotalCaptureResult result) {
+            checkMonoFocusAndTakeBothPictures(result);
+        }
+    };
+
+
     private void checkAfAeStatesAndCapture(int id) {
         if(isBackCamera() && getCameraMode() == DUAL_MODE) {
-            mState[id] = STATE_AF_AE_LOCKED;
-            try {
-                // stop repeating request once we have AF/AE lock
-                // for mono when mono preview is off.
-                if(id == MONO_ID && !canStartMonoPreview()) {
-                    mCaptureSession[id].stopRepeating();
-                }
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-            }
+//            mState[id] = STATE_AF_AE_LOCKED;
+//            try {
+//                // stop repeating request once we have AF/AE lock
+//                // for mono when mono preview is off.
+//                if(id == MONO_ID && !canStartMonoPreview()) {
+//                    mCaptureSession[id].stopRepeating();
+//                }
+//            } catch (CameraAccessException e) {
+//                e.printStackTrace();
+//            }
 
-            if(mState[BAYER_ID] == STATE_AF_AE_LOCKED &&
-                    mState[MONO_ID] == STATE_AF_AE_LOCKED) {
-                mState[BAYER_ID] = STATE_PICTURE_TAKEN;
-                mState[MONO_ID] = STATE_PICTURE_TAKEN;
-                captureStillPicture(BAYER_ID);
-                captureStillPicture(MONO_ID);
-            }
+//            if(mState[BAYER_ID] == STATE_AF_AE_LOCKED &&
+//                    mState[MONO_ID] == STATE_AF_AE_LOCKED) {
+//                mState[BAYER_ID] = STATE_PICTURE_TAKEN;
+//                mState[MONO_ID] = STATE_PICTURE_TAKEN;
+//                captureStillPicture(BAYER_ID);
+//                captureStillPicture(MONO_ID);
+//            }
 //            else { mUI.enableShutter(true);}
         } else {
             mState[id] = STATE_PICTURE_TAKEN;
@@ -1065,6 +1194,11 @@ public class CaptureModule implements CameraModule, PhotoController,
         float valueF = Float.valueOf(value);
         builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
         builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, valueF);
+    }
+
+    private void applyFocusDistance(CaptureRequest.Builder builder, float value) {
+        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+        builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, value);
     }
 
     private void createSessions() {
@@ -1422,7 +1556,7 @@ public class CaptureModule implements CameraModule, PhotoController,
                 case DUAL_MODE:
                     mShotStartTime = System.currentTimeMillis();
                     lockFocus(BAYER_ID);
-                    lockFocus(MONO_ID);
+//                    lockFocus(MONO_ID);
 //                    captureStillPicture(BAYER_ID);
 //                    captureStillPicture(MONO_ID);
                     break;
@@ -1460,6 +1594,54 @@ public class CaptureModule implements CameraModule, PhotoController,
     /**
      * Lock the focus as the first step for a still image capture.
      */
+    private CaptureRequest.Builder mMonoCaptureBuilder = null;
+
+    private int STATE_WAITING_FOR_LENS_STOP = 7;
+    private int STATE_LENS_STABLE = 8;
+
+    private long mMonoFocusStartTime = 0;
+    private void captureMono() {
+        mState[BAYER_ID] = STATE_AF_AE_LOCKED;
+        mState[MONO_ID] = STATE_WAITING_FOR_LENS_STOP; // actually waiting for lens stop moving
+        int id = MONO_ID;
+
+        mTakingPicture[id] = true;
+
+        try {
+            CaptureRequest.Builder builder = getRequestBuilder(id);
+
+            builder.setTag(id);
+            addPreviewSurface(builder, null, id);
+
+            applyCommonSettings(builder, id);
+
+            mPreviewRequestBuilder[id].set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            mPreviewRequestBuilder[id].set(CaptureRequest.LENS_FOCUS_DISTANCE, mColorLensDistance);
+            mMonoFocusStartTime = System.currentTimeMillis();
+
+            mPreviewRequestBuilder[id].setTag(id);
+            try {
+//                if (id == MONO_ID && !canStartMonoPreview()) {
+//                    mCaptureSession[id].capture(mPreviewRequestBuilder[id]
+//                            .build(), mMonoCaptureCallback, mCameraHandler);
+//                } else {
+                    mCaptureSession[id].setRepeatingRequest(mPreviewRequestBuilder[id]
+                            .build(), mMonoCaptureCallback, mCameraHandler);
+//                }
+            } catch (CameraAccessException | IllegalStateException e) {
+                e.printStackTrace();
+            }
+
+                applyFocusDistance(builder, mColorLensDistance);
+                CaptureRequest request = builder.build();
+                mLockRequestHashCode[id] = request.hashCode();
+                mCaptureSession[id].capture(request, mMonoCaptureCallback, mCameraHandler);
+
+
+        } catch (CameraAccessException | IllegalStateException e) {
+            e.printStackTrace();
+        }
+    }
     private void lockFocus(int id) {
         if (mActivity == null || mCameraDevice[id] == null
                 || !checkSessionAndBuilder(mCaptureSession[id], mPreviewRequestBuilder[id])) {
@@ -1501,6 +1683,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
         try {
             CaptureRequest.Builder builder = getRequestBuilder(id);
+            if (id == MONO_ID)
+                mMonoCaptureBuilder = builder;
+
             builder.setTag(id);
             addPreviewSurface(builder, null, id);
 
@@ -1634,24 +1819,35 @@ public class CaptureModule implements CameraModule, PhotoController,
 //            captureBuilder.set(CaptureRequest.JPEG_THUMBNAIL_QUALITY, (byte)80);
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
             addPreviewSurface(captureBuilder, null, id);
-            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, mControlAFMode);
-            captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+            if (id != MONO_ID) {
+                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, mControlAFMode);
+                captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+            }
+            else {
+                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+                captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, mColorLensDistance);
 
+            }
             if(id != BAYER_ID)
                 captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
             else
-                captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
+                applyNoiseReduction(captureBuilder);
+//                captureBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
 
             captureBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
             captureBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
 
 
             captureBuilder.set(CdsModeKey, 2); // CDS 0-OFF, 1-ON, 2-AUTO
+//            if (id != MONO_ID)
             applySettingsForCapture(captureBuilder, id);
 
             if(csEnabled) {
                 applySettingsForLockExposure(captureBuilder, id);
                 checkAndPlayShutterSound(id);
+                ClearSightImageProcessor.getInstance().mColorLensDistance = mColorLensDistance;
+                ClearSightImageProcessor.getInstance().mMonoLensDistance = mMonoLensDistance;
+
                 ClearSightImageProcessor.getInstance().capture(
                         id==BAYER_ID, mCaptureSession[id], captureBuilder, mCaptureCallbackHandler);// , mBayerFocusDistance);
             } else if(id == getMainCameraId() && mPostProcessor.isFilterOn()) { // Case of post filtering
@@ -2008,7 +2204,8 @@ public class CaptureModule implements CameraModule, PhotoController,
 
             applySettingsForUnlockFocus(builder, id);
             mCaptureSession[id].capture(builder.build(), mCaptureCallback, mCameraHandler);
-            mState[id] = STATE_PREVIEW;
+            if (id != MONO_ID) {
+                mState[id] = STATE_PREVIEW;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
                     @Override
@@ -2017,10 +2214,11 @@ public class CaptureModule implements CameraModule, PhotoController,
                     }
                 });
             }
-            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-            applyFlash(mPreviewRequestBuilder[id], id);
-            applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
-            setAFModeToPreview(id, mControlAFMode);
+                mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+                applyFlash(mPreviewRequestBuilder[id], id);
+                applySettingsForUnlockExposure(mPreviewRequestBuilder[id], id);
+                setAFModeToPreview(id, mControlAFMode);
+            }
             mTakingPicture[id] = false;
             if (id == getMainCameraId()) {
                 mActivity.runOnUiThread(new Runnable() {
@@ -2214,15 +2412,18 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     private void applyCommonSettings(CaptureRequest.Builder builder, int id) {
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
-//        if (id == BAYER_ID)
+        if (id == BAYER_ID)
             builder.set(CaptureRequest.CONTROL_AF_MODE, mControlAFMode);
-//        else
-//            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+        else {
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            applyFocusDistance(builder, 1e-10f);
+        }
 
         if(id != BAYER_ID)
             builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
         else
-            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
+            applyNoiseReduction(builder);
+//            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
 
         builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
         builder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
@@ -2867,7 +3068,7 @@ public class CaptureModule implements CameraModule, PhotoController,
             switch (getCameraMode()) {
                 case DUAL_MODE:
                     triggerFocusAtPoint(x, y, BAYER_ID);
-                    triggerFocusAtPoint(x, y, MONO_ID);
+//                    triggerFocusAtPoint(x, y, MONO_ID);
                     break;
                 case BAYER_MODE:
                     triggerFocusAtPoint(x, y, BAYER_ID);
@@ -4238,10 +4439,12 @@ public class CaptureModule implements CameraModule, PhotoController,
     }
 
     private void applyAFRegions(CaptureRequest.Builder request, int id) {
-        if (mControlAFMode == CaptureRequest.CONTROL_AF_MODE_AUTO) {
-            request.set(CaptureRequest.CONTROL_AF_REGIONS, mAFRegions[id]);
-        } else {
-            request.set(CaptureRequest.CONTROL_AF_REGIONS, ZERO_WEIGHT_3A_REGION);
+        if (id != MONO_ID) {
+            if (mControlAFMode == CaptureRequest.CONTROL_AF_MODE_AUTO) {
+                request.set(CaptureRequest.CONTROL_AF_REGIONS, mAFRegions[id]);
+            } else {
+                request.set(CaptureRequest.CONTROL_AF_REGIONS, ZERO_WEIGHT_3A_REGION);
+            }
         }
     }
 
@@ -4450,15 +4653,17 @@ public class CaptureModule implements CameraModule, PhotoController,
     }
 
     private void cancelTouchFocus(int id) {
-        if(mPaused)
-            return;
+        if (id != MONO_ID) {
+            if (mPaused)
+                return;
 
-        if (DEBUG) {
-            Log.v(TAG, "cancelTouchFocus " + id);
+            if (DEBUG) {
+                Log.v(TAG, "cancelTouchFocus " + id);
+            }
+            mState[id] = STATE_PREVIEW;
+            mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+            setAFModeToPreview(id, mControlAFMode);
         }
-        mState[id] = STATE_PREVIEW;
-        mControlAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-        setAFModeToPreview(id, mControlAFMode);
     }
 
     private MeteringRectangle[] afaeRectangle(float x, float y, int width, int height,
@@ -4839,6 +5044,9 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     @Override
     public void onClearSightSuccess(byte[] thumbnailBytes) {
+        mNeededMonoFramesIndex = (mNeededMonoFramesIndex + 1)% mNeededMonoFramesTotal;
+
+
         long tEnd = System.currentTimeMillis();
         long tDelta = tEnd - mShotStartTime;
         double elapsedSeconds = tDelta / 1000.0;
