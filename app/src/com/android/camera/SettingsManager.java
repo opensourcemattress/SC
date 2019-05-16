@@ -181,11 +181,12 @@ public class SettingsManager implements ListMenu.SettingsListener {
         KEY_ISO_INDEX.put("auto", 0);
         KEY_ISO_INDEX.put("deblur", 1);
         KEY_ISO_INDEX.put("100", 2);
-        KEY_ISO_INDEX.put("100", 2);
         KEY_ISO_INDEX.put("200", 3);
         KEY_ISO_INDEX.put("400", 4);
         KEY_ISO_INDEX.put("800", 5);
         KEY_ISO_INDEX.put("1600", 6);
+        KEY_ISO_INDEX.put("3200", 7);
+
     }
 
     private SettingsManager(Context context) {

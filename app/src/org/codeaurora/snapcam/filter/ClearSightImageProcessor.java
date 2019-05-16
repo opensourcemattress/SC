@@ -37,6 +37,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.ShortBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,6 +77,7 @@ import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.media.ImageWriter;
+import android.media.MediaScannerConnection;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -185,6 +187,11 @@ public class ClearSightImageProcessor {
     public float mColorLensDistance = 0.0f;
     public float mMonoLensDistance = 0.0f;
     public int mMonoNFrames = 0;
+    public float[] mMask = null;
+    private native int convertAndSaveRAW10Native(byte[] rawBuffer, float[] mask, String savePath);
+    static {
+        System.loadLibrary("imwrite_yuv");
+    }
 
     private static ClearSightImageProcessor mInstance;
 
@@ -423,10 +430,10 @@ public class ClearSightImageProcessor {
             Handler captureCallbackHandler) throws CameraAccessException {
         Log.d(TAG, "capture: " + bayer);
 
-        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
-        requestBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
-        requestBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-        requestBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+//        requestBuilder.set(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_OFF);
+//        requestBuilder.set(CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE_OFF);
+//        requestBuilder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+//        requestBuilder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
 
 
         final int cam = bayer?CAM_TYPE_BAYER:CAM_TYPE_MONO;
@@ -494,10 +501,10 @@ public class ClearSightImageProcessor {
             currImageFormat = ImageFormat.JPEG; //ImageFormat.YUV_420_888; //
         }
         else {
-//            currImageFormat = ImageFormat.RAW_SENSOR;
-//            height = 3016;
-//            width = 4032;
-            currImageFormat = ImageFormat.YUV_420_888; // ImageFormat.RAW_SENSOR; //
+            currImageFormat = ImageFormat.RAW_SENSOR;
+            height = 3016;
+            width = 4032;
+//            currImageFormat = ImageFormat.YUV_420_888; // ImageFormat.RAW_SENSOR; //
         }
 
 
@@ -756,10 +763,8 @@ public class ClearSightImageProcessor {
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpg");
-            values.put(MediaStore.MediaColumns.DATA, filename);
-            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            String[] files = new String[]{filename};
+            MediaScannerConnection.scanFile(mContext, files, null, null);
 
         }
 
@@ -768,18 +773,28 @@ public class ClearSightImageProcessor {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Images.Media.DATE_TAKEN, System.currentTimeMillis());
 
-            byte[] correctedData = CaptureModule.getCorrectedBufferFromYuvImage(image, false);
-            Mat test = new Mat(3000,4000, CvType.CV_8U);
-            test.put(0, 0, correctedData);
-
+//            String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".raw";
             String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
-//                    mMediaSaveService.addRawImage(getJpegData(image), mNamedEntity.title ,"raw");
 
-            Imgcodecs.imwrite(filename, test);
+            byte[] data = getJpegData(image);
+            convertAndSaveRAW10Native(data, mMask, filename);
 
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-            values.put(MediaStore.MediaColumns.DATA, filename);
-            mContext.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+//            FileOutputStream fos = null;
+//            try {
+//                fos = new FileOutputStream(filename);
+//                fos.write(data);
+//                } catch (FileNotFoundException e) {
+//                e.printStackTrace();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            } finally {
+//                try {fos.close();}
+//                catch (Exception e) {e.printStackTrace();}
+//            }
+
+
+            String[] files = new String[]{filename};
+            MediaScannerConnection.scanFile(mContext, files, null, null);
         }
 
         private void processNewCaptureEvent(Message msg) {
