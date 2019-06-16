@@ -114,6 +114,11 @@ import com.android.internal.util.MemInfoReader;
 
 import org.codeaurora.snapcam.R;
 import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -414,6 +419,12 @@ public class CaptureModule implements CameraModule, PhotoController,
     private float mBayerFocusDistance = 0.0f;
 
     private long mShotStartTime = 0L;
+
+    private float[] mMaskSmall = new float[] {2.16044f, 1.88753f, 1.64291f, 1.45164f, 1.30404f, 1.22197f, 1.17394f, 1.14605f, 1.13600f, 1.14641f, 1.17748f, 1.22643f, 1.31290f, 1.46020f, 1.65215f, 1.88600f, 2.15622f, 1.97795f, 1.68708f, 1.45563f, 1.27438f, 1.17957f, 1.10958f, 1.07467f, 1.06034f, 1.05640f, 1.06166f, 1.07691f, 1.11490f, 1.18582f, 1.28099f, 1.46322f, 1.68797f, 1.96836f, 1.81592f, 1.53450f, 1.31071f, 1.18240f, 1.09076f, 1.05292f, 1.02697f, 1.01202f, 1.00825f, 1.01350f, 1.02979f, 1.05619f, 1.09731f, 1.18535f, 1.31442f, 1.53695f, 1.80319f, 1.69238f, 1.42000f, 1.22737f, 1.11334f, 1.05356f, 1.01523f, 1.00024f, 1.00000f, 1.00000f, 1.00000f, 1.00056f, 1.01870f, 1.05610f, 1.11455f, 1.22808f, 1.41878f, 1.67847f, 1.60812f, 1.34087f, 1.17985f, 1.07643f, 1.02762f, 1.00023f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00045f, 1.02898f, 1.07607f, 1.17736f, 1.33405f, 1.58829f, 1.56077f, 1.29663f, 1.15128f, 1.06233f, 1.01216f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.01168f, 1.05947f, 1.14504f, 1.28611f, 1.53324f, 1.54753f, 1.28454f, 1.14176f, 1.05747f, 1.00795f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00587f, 1.05298f, 1.13051f, 1.26852f, 1.51305f, 1.56613f, 1.30118f, 1.15268f, 1.06285f, 1.01221f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00784f, 1.05590f, 1.13452f, 1.27521f, 1.52287f, 1.62270f, 1.35179f, 1.18512f, 1.07843f, 1.02880f, 1.00029f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00000f, 1.00003f, 1.02030f, 1.06829f, 1.16049f, 1.30984f, 1.56238f, 1.71596f, 1.43929f, 1.23562f, 1.11813f, 1.05552f, 1.01573f, 1.00015f, 1.00000f, 1.00000f, 1.00000f, 1.00001f, 1.00741f, 1.04428f, 1.09494f, 1.20397f, 1.37932f, 1.64132f, 1.84601f, 1.55814f, 1.32599f, 1.18886f, 1.09514f, 1.05251f, 1.02378f, 1.00648f, 1.00245f, 1.00410f, 1.01616f, 1.04159f, 1.07673f, 1.15425f, 1.27074f, 1.48435f, 1.75233f, 2.01252f, 1.71407f, 1.47328f, 1.28408f, 1.18160f, 1.10682f, 1.07080f, 1.05271f, 1.04563f, 1.04855f, 1.06134f, 1.08613f, 1.14679f, 1.23610f, 1.39432f, 1.61955f, 1.90062f, 2.19635f, 1.91731f, 1.66159f, 1.46286f, 1.30540f, 1.21754f, 1.16162f, 1.12550f, 1.10995f, 1.11484f, 1.14026f, 1.18568f, 1.25368f, 1.38428f, 1.56648f, 1.80173f, 2.07597f};
+    private float[] mMask = null;
+    public Mat mMaskMat = null;
+    private int imH = 3016;
+    private int imW = 4032;
 
     public static ByteBuffer correctY(ByteBuffer yBuffer, byte[] tmpBuf) {
         int sizeY = yBuffer.capacity();
@@ -993,6 +1004,22 @@ public class CaptureModule implements CameraModule, PhotoController,
         return mLocationManager;
     }
 
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(mActivity) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS:
+                {
+                    Log.i(TAG, "OpenCV loaded successfully");
+                } break;
+                default:
+                {
+                    super.onManagerConnected(status);
+                } break;
+            }
+        }
+    };
+
     private void initializeFirstTime() {
         if (mFirstTimeInitialized || mPaused) {
             return;
@@ -1035,6 +1062,23 @@ public class CaptureModule implements CameraModule, PhotoController,
         if (mGraphViewB != null){
             mGraphViewB.setCaptureModuleObject(this);
         }
+
+        if (!OpenCVLoader.initDebug()) {
+            Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION, mActivity, mLoaderCallback);
+        } else {
+            Log.d(TAG, "OpenCV library found inside package. Using it!");
+            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
+        }
+
+        Mat maskSmallMat = new Mat(13, 17, CvType.CV_32F);
+        maskSmallMat.put(0,0, mMaskSmall);
+        Mat maskMat = new Mat();
+        org.opencv.imgproc.Imgproc.resize(maskSmallMat, maskMat, new org.opencv.core.Size(imW, imH));
+        mMask = new float[imH*imW];
+        maskMat.get(0,0, mMask);
+        ClearSightImageProcessor.getInstance().mMask = mMask;
+
         mFirstTimeInitialized = true;
     }
 
@@ -4929,6 +4973,8 @@ public class CaptureModule implements CameraModule, PhotoController,
 
     private byte[] getJpegData(Image image) {
         ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+        buffer.rewind();
+
         byte[] bytes = new byte[buffer.remaining()];
         buffer.get(bytes);
         return bytes;
