@@ -155,6 +155,13 @@ public class ClearSightImageProcessor {
     private Size mFinalMonoSize;
 
 
+//    private static ClearSightImageProcessor mInstance;
+
+    static {
+        System.loadLibrary("imwrite_yuv");
+    }
+    private static native int getCorrectedYUVData(byte[] yBuffer, byte[] vuBuffer, byte[] resultBuffer);
+
     private ImageProcessHandler mImageProcessHandler;
 //    private ClearsightRegisterHandler mClearsightRegisterHandler;
 //    private ClearsightProcessHandler mClearsightProcessHandler;
@@ -188,7 +195,7 @@ public class ClearSightImageProcessor {
     public float mMonoLensDistance = 0.0f;
     public int mMonoNFrames = 0;
     public float[] mMask = null;
-    private native int convertAndSaveRAW10Native(byte[] rawBuffer, float[] mask, String savePath);
+//    private native int convertAndSaveRAW10Native(byte[] rawBuffer, float[] mask, String savePath);
     static {
         System.loadLibrary("imwrite_yuv");
     }
@@ -494,6 +501,64 @@ public class ClearSightImageProcessor {
     private boolean isClosing() {
         return mIsClosing;
     }
+    public static int imwriteYUVimage(Image image, String imagePath) {
+        if (image == null) {
+            return -1;
+        }
+
+        int imH = 3000;
+        int imW = 4000;
+
+        // -32 and +32 may be because of some internal bug
+        int yLenght = 12095968; // 4032 * 3000 - 32
+        int vuLenght = 6048032; // 4032 * 1500 + 32
+
+
+        // it must be easier to write image in native code
+        Plane[] planes = image.getPlanes();
+
+        int[] strides = new int[] {imW, imW};
+        ByteBuffer yBuffer = planes[0].getBuffer();
+        ByteBuffer vuBuffer = planes[2].getBuffer();
+        int sizeY = yBuffer.capacity();
+        int sizeVU = vuBuffer.capacity();
+//        int stride = image.getPlanes()[0].getRowStride();
+//        int height = image.getHeight();
+
+        byte[] yData = new byte[yLenght];
+        yBuffer.rewind();
+        yBuffer.get(yData, 0, sizeY);
+
+        byte[] vuData = new byte[vuLenght];
+
+        vuBuffer.rewind();
+        vuBuffer.get(vuData, 0, sizeVU);
+
+        byte[] imageData = new byte[imH*imW + (imH*imW)/2];
+
+        long begin = System.currentTimeMillis();
+
+        getCorrectedYUVData(yData, vuData, imageData);
+
+        long end = System.currentTimeMillis() - begin;
+
+        YuvImage yuvImage = new YuvImage(imageData, ImageFormat.NV21, imW,
+                imH, strides);
+
+        FileOutputStream fileOutputStream = null;
+        try {
+            fileOutputStream = new FileOutputStream(imagePath);
+            yuvImage.compressToJpeg(new Rect(0, 0, imW, imH), 90, fileOutputStream);
+            fileOutputStream.close();
+        }
+        catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return 0;
+    }
 
     private ImageReader createImageReader(final int cam, int width, int height) {
         int currImageFormat = 0;
@@ -777,7 +842,7 @@ public class ClearSightImageProcessor {
             String filename = "/mnt/sdcard/DCIM/Camera/raw/" +  String.format(".%s", mNamedEntity.title) + fNameSuffix + ".png";
 
             byte[] data = getJpegData(image);
-            convertAndSaveRAW10Native(data, mMask, filename);
+//            convertAndSaveRAW10Native(data, mMask, filename);
 
 //            FileOutputStream fos = null;
 //            try {

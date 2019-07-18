@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <cstdlib>
+#include <cstdint>
 
 extern "C"
 {
@@ -23,7 +24,7 @@ Java_com_android_camera_imageprocessor_ZSLQueue_tvNative(
          int test = 0;
          return -1;
      }
-     unsigned char* imBytes = (unsigned char*)imBytes_jbyte;
+     uint16_t* imBytes = (uint16_t*)imBytes_jbyte;
 
 
      for (int i=0; i<imH; i++) {

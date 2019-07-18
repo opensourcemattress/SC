@@ -47,6 +47,8 @@ import android.location.Location;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.ImageWriter;
+import android.media.MediaScannerConnection;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -71,20 +73,29 @@ import com.android.camera.imageprocessor.filter.UbifocusFilter;
 import com.android.camera.ui.RotateTextToast;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import com.android.camera.imageprocessor.filter.ImageFilter;
 import com.android.camera.util.CameraUtil;
 import com.android.camera.util.PersistUtil;
 
 import android.util.Size;
+
+import org.codeaurora.snapcam.R;
+import org.codeaurora.snapcam.filter.ClearSightImageProcessor;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.imgcodecs.Imgcodecs;
 
 public class PostProcessor{
 
@@ -102,7 +113,7 @@ public class PostProcessor{
     public static final int FILTER_MAX = 8;
 
     //BestPicture requires 10 which is the biggest among filters
-    private static final int MAX_REQUIRED_IMAGE_NUM = 11;
+    private static final int MAX_REQUIRED_IMAGE_NUM = 26;
     private int mCurrentNumImage = 0;
     private ImageFilter mFilter;
     private int mFilterIndex;
@@ -119,6 +130,7 @@ public class PostProcessor{
     private WatchdogThread mWatchdog;
     private int mOrientation = 0;
     private ImageWriter mImageWriter;
+    private boolean mSlowDown;
 
     private static boolean DEBUG_DUMP_FILTER_IMG =
             (PersistUtil.getCamera2Debug() == PersistUtil.CAMERA2_DEBUG_DUMP_IMAGE) ||
@@ -127,7 +139,7 @@ public class PostProcessor{
             (PersistUtil.getCamera2Debug() == PersistUtil.CAMERA2_DEBUG_DUMP_LOG) ||
             (PersistUtil.getCamera2Debug() == PersistUtil.CAMERA2_DEBUG_DUMP_ALL);
 
-    private ZSLQueue mZSLQueue;
+    public ZSLQueue mZSLQueue;
     private CameraDevice mCameraDevice;
     private CameraCaptureSession mCaptureSession;
     private ImageReader mImageReader;
@@ -147,15 +159,38 @@ public class PostProcessor{
     private int mPendingContinuousRequestCount = 0;
     public int mMaxRequiredImageNum;
 
+    public ZSLQueue mSecondZSLQueue;
+    public Semaphore mQueueSemaphore = null;
+    public PostProcessor mSecondPostProcessor;
+
     public int getMaxRequiredImageNum() {
         return mMaxRequiredImageNum;
     }
+    public boolean mIsMono = false;
 
     public boolean isZSLEnabled() {
         return mUseZSL;
-//        return false;
+        //        return false;
 
     }
+
+    static {
+        System.loadLibrary("imwrite_yuv");
+    }
+
+    public float[] mMask = null;
+    private native int convertAndSaveRawSensorNative(byte[] rawBuffer, float[] mask, String savePath);
+
+
+//    public ZSLQueue getZSLQueue () {
+//        return mZSLQueue;
+//    }
+
+//    public void setSecondZSLQueue(ZSLQueue mSecondZSLQueue) {
+//        this.mSecondZSLQueue = mSecondZSLQueue;
+//    }
+
+    public Semaphore mMonoProcessorSemaphore = null;
 
     public void onStartCapturing() {
         mTotalCaptureResultList.clear();
@@ -168,6 +203,10 @@ public class PostProcessor{
     public ImageHandlerTask getImageHandler() {
         return mImageHandlerTask;
     }
+
+    public boolean mNeedHurryUp = false;
+    public boolean mNeedSlowDown = false;
+    public long mLastSleep = 0;
 
     private class ImageWrapper {
         Image mImage;
@@ -199,6 +238,8 @@ public class PostProcessor{
             return mRawImage;
         }
     }
+
+
 
     private void clearFallOffImage() {
         for(ZSLQueue.ImageItem item: mFallOffImages ) {
@@ -253,114 +294,193 @@ public class PostProcessor{
         public void onImageAvailable(ImageReader reader) {
             try {
                 if(mUseZSL) {
-                    if(mController.isLongShotActive() && mPendingContinuousRequestCount > 0) {
-                        Image image = reader.acquireNextImage();
-                        Image rawImage = null;
-                        if (mSaveRaw && mRawImageReader != null) {
-                            rawImage = mRawImageReader.acquireNextImage();
-                        }
-                        ZSLQueue.ImageItem item = new ZSLQueue.ImageItem();
-                        item.setImage(image, rawImage);
-                        if(onContinuousZSLImage(item, true)) {
-                            image.close();
-                            if (rawImage != null) {
-                                rawImage.close();
-                            }
-                        }
-                        return;
-                    }
-                    if(mIsZSLFallOff) {
-                        Image image = reader.acquireNextImage();
-                        Image rawImage = null;
-                        if (mSaveRaw && mRawImageReader != null) {
-                            rawImage = mRawImageReader.acquireNextImage();
-                        }
-                        ZSLQueue.ImageItem imageItem = new ZSLQueue.ImageItem();
-                        imageItem.setImage(image,rawImage);
-                        if(mZSLFallOffResult == null) {
-                            addFallOffImage(imageItem);
-                            return;
-                        }
-                        addFallOffImage(imageItem);
-                        ZSLQueue.ImageItem foundImage = findFallOffImage(
-                                mZSLFallOffResult.get(CaptureResult.SENSOR_TIMESTAMP).longValue());
-                        if(foundImage != null && foundImage.getImage() != null) {
-                            Log.d(TAG,"ZSL fall off image is found");
-                            reprocessImage(foundImage.getImage(), mZSLFallOffResult);
-                            Image raw = foundImage.getRawImage();
-                            if (raw != null) {
-                                onRawImageToProcess(raw);
-                            }
-                            mIsZSLFallOff = false;
-                            clearFallOffImage();
-                            mZSLFallOffResult = null;
-                        } else {
-                            clearFallOffImage();
-                        }
+//                    if(mController.isLongShotActive() && mPendingContinuousRequestCount > 0) {
+//                        Image image = reader.acquireNextImage();
+//                        Image rawImage = null;
+//                        if (mSaveRaw && mRawImageReader != null) {
+//                            rawImage = mRawImageReader.acquireNextImage();
+//                        }
+//                        ZSLQueue.ImageItem item = new ZSLQueue.ImageItem();
+//                        item.setImage(image, rawImage);
+//                        if(onContinuousZSLImage(item, true)) {
+//                            image.close();
+//                            if (rawImage != null) {
+//                                rawImage.close();
+//                            }
+//                        }
+//                        return;
+//                    }
+//                    if(mIsZSLFallOff) {
+//                        Image image = reader.acquireNextImage();
+//                        Image rawImage = null;
+//                        if (mSaveRaw && mRawImageReader != null) {
+//                            rawImage = mRawImageReader.acquireNextImage();
+//                        }
+//                        ZSLQueue.ImageItem imageItem = new ZSLQueue.ImageItem();
+//                        imageItem.setImage(image,rawImage);
+//                        if(mZSLFallOffResult == null) {
+//                            addFallOffImage(imageItem);
+//                            return;
+//                        }
+//                        addFallOffImage(imageItem);
+//                        ZSLQueue.ImageItem foundImage = findFallOffImage(
+//                                mZSLFallOffResult.get(CaptureResult.SENSOR_TIMESTAMP).longValue());
+//                        if(foundImage != null && foundImage.getImage() != null) {
+//                            Log.d(TAG,"ZSL fall off image is found");
+//                            reprocessImage(foundImage.getImage(), mZSLFallOffResult);
+//                            Image raw = foundImage.getRawImage();
+//                            if (raw != null) {
+//                                onRawImageToProcess(raw);
+//                            }
+//                            mIsZSLFallOff = false;
+//                            clearFallOffImage();
+//                            mZSLFallOffResult = null;
+//                        } else {
+//                            clearFallOffImage();
+//                        }
+//                        return;
+//                    }
+                    Image image = null;
+                    if (mNeedHurryUp)
+                        image = reader.acquireLatestImage();
+                    else
+                        image = reader.acquireNextImage();
+
+                    if (image == null) {
                         return;
                     }
 
-                    Image image = reader.acquireLatestImage();
+                    boolean skipImage = false;
+                    long maxDiff= 40 * 1000000L; // 40ms
+                    long diff = 0;
+                    long currTimestamp = image.getTimestamp();
+                    long secondLatestTimestamp = -1;
+
+
+                    if (mSecondPostProcessor.mZSLQueue != null) {
+//                        if (mIsMono) {
+//                            secondLatestTimestamp = mSecondPostProcessor.mZSLQueue.getMaxImTimestamp();
+//                            long justCheck = mSecondPostProcessor.mZSLQueue.getMaxImTimestamp();
+//                            long lol = justCheck + 1;
+//
+//                        } else {
+//                            secondLatestTimestamp = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+////                            long justCheck = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+////                            long lol = justCheck + 1;
+//                        }
+                        boolean needToSleepMore = false;
+
+                        if (secondLatestTimestamp != -1) {
+                            diff = currTimestamp - secondLatestTimestamp;
+
+                            if (diff > maxDiff) {
+
+//                        try {
+                                if (!mIsMono) { // usually bayer queue is lagging behind
+//                            long sleepDiff = currTimestamp - mLastSleep;
+//                            if (sleepDiff > 500000000L) {
+//                                mSecondPostProcessor.mNeedHurryUp = true;
+                                    do {
+//                                    long justCheck = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+//                                    justCheck = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+//                                    justCheck = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+
+                                        long sleepMs = diff / 1000000L;
+                                        Thread.sleep(sleepMs);
+                                        needToSleepMore = false;
+                                        if (mSecondPostProcessor.mZSLQueue != null)
+                                            needToSleepMore = currTimestamp > mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+                                    } while (needToSleepMore);
+                                    mLastSleep = currTimestamp;
+//                            }
+//                            skipImage = true;
+                                }
+//                        } catch (InterruptedException e) {
+//                            e.printStackTrace();
+//                        }
+//                                if (mIsMono) {
+//                                    secondLatestTimestamp = mSecondPostProcessor.mZSLQueue.getMaxImTimestamp();
+//                                    long justCheck = mSecondPostProcessor.mZSLQueue.getMaxImTimestamp();
+//                                    long lol = justCheck + 1;
+//                                } else {
+//                                    secondLatestTimestamp = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+//                                    long justCheck = mSecondPostProcessor.mZSLQueue.getMaxRawTimestamp();
+//                                    long lol = justCheck + 1;
+//                                }
+//                                diff = currTimestamp - secondLatestTimestamp;
+//                                double seconds = diff / 1e9;
+                            } else {
+                                mSecondPostProcessor.mNeedHurryUp = false;
+                            }
+                        }
+                    }
+
                     Image rawImage = null;
                     if (mSaveRaw && mRawImageReader != null) {
                         rawImage = mRawImageReader.acquireLatestImage();
                     }
 
-                    if (image == null) {
-                        return;
-                    }
-                    if (!mMutureLock.tryAcquire()) {
+
+                    if (!mMutureLock.tryAcquire(1,10,TimeUnit.MILLISECONDS)) {
                         image.close();
-                        if (rawImage != null) {
-                            rawImage.close();
-                        }
+//                        if (rawImage != null) {
+//                            rawImage.close();
+//                        }
                         return;
                     }
-                    if (mImageWrapper == null || mImageWrapper.isTaken()) {
-                        if (mSaveRaw && rawImage != null) {
-                            mImageWrapper = new ImageWrapper(image, rawImage);
-                        } else {
+                    if (!skipImage && (mImageWrapper == null || mImageWrapper.isTaken())) {
+//                        if (mSaveRaw && rawImage != null) {
+//                            mImageWrapper = new ImageWrapper(image, rawImage);
+//                        } else {
                             mImageWrapper = new ImageWrapper(image);
-                        }
+//                        }
                         mMutureLock.release();
                     } else {
                         image.close();
-                        if (rawImage != null) {
-                            rawImage.close();
-                        }
+//                        if (rawImage != null) {
+//                            rawImage.close();
+//                        }
                         mMutureLock.release();
                         return;
                     }
                     if (mZSLHandler != null) {
+//                        Image image = mImageWrapper.getImage();
+//                        mImageWrapper.mIsTaken = true;
+//                        if (mZSLQueue != null) {
+//                            mZSLQueue.add(image, null);
+//                        }
+
                         mZSLHandler.post(this);
                     }
                 } else { //Non ZSL case
-                    Image image = reader.acquireNextImage();
-                    Image rawImage = null;
-                    if(image != null) {
-                        onImageToProcess(image);
-                        if (mSaveRaw && mRawImageReader != null) {
-                            rawImage = mRawImageReader.acquireNextImage();
-                        }
-                        if (rawImage != null) {
-                            onRawImageToProcess(rawImage);
-                        }
-                    }
+//                    Image image = reader.acquireNextImage();
+//                    Image rawImage = null;
+//                    if(image != null) {
+//                        onImageToProcess(image);
+//                        if (mSaveRaw && mRawImageReader != null) {
+//                            rawImage = mRawImageReader.acquireNextImage();
+//                        }
+//                        if (rawImage != null) {
+//                            onRawImageToProcess(rawImage);
+//                        }
+//                    }
                 }
             } catch (IllegalStateException e) {
                 Log.e(TAG, "Max images has been already acquired. ");
                 mIsZSLFallOff = false;
                 mZSLFallOffResult = null;
                 clearFallOffImage();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
 
         @Override
         public void run() {   //Only ZSL case
-            Image image = mImageWrapper.getImage();
-            Image rawImage = mImageWrapper.getRawImage();
             try {
-                mMutureLock.acquire();
+                mMutureLock.tryAcquire(1, 10, TimeUnit.MILLISECONDS);
+                Image image = mImageWrapper.getImage();
+                Image rawImage = null;
                 if (mUseZSL) {
                     if (mZSLQueue != null) {
                         mZSLQueue.add(image, rawImage);
@@ -381,10 +501,13 @@ public class PostProcessor{
     }
 
     public void onMetaAvailable(TotalCaptureResult metadata) {
-        if(mUseZSL && mZSLQueue != null) {
-            mZSLQueue.add(metadata);
-        }
-        mLatestResultForLongShot = metadata;
+        // WARNING: I not sure that we need meta now, so I disable it
+                if (mUseZSL && mZSLQueue != null) {
+                    mZSLQueue.add(metadata)
+                    ;
+                }
+                mLatestResultForLongShot = metadata;
+
     }
 
     CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
@@ -426,56 +549,234 @@ public class PostProcessor{
         mCameraDevice = cameraDevice;
         mCaptureSession = captureSession;
         if(mUseZSL) {
-            mImageWriter = ImageWriter.newInstance(captureSession.getInputSurface(), mMaxRequiredImageNum);
+//            mImageWriter = ImageWriter.newInstance(captureSession.getInputSurface(), mMaxRequiredImageNum);
         }
     }
 
     public void onImageReaderReady(ImageReader imageReader, Size maxSize, Size pictureSize) {
         mImageReader = imageReader;
         if(mUseZSL) {
-            mZSLReprocessImageReader = ImageReader.newInstance(pictureSize.getWidth(), pictureSize.getHeight(), ImageFormat.JPEG, mMaxRequiredImageNum);
-            mZSLReprocessImageReader.setOnImageAvailableListener(processedImageAvailableListener, mHandler);
+//            mZSLReprocessImageReader = ImageReader.newInstance(pictureSize.getWidth(), pictureSize.getHeight(), ImageFormat.JPEG, mMaxRequiredImageNum);
+//            mZSLReprocessImageReader.setOnImageAvailableListener(processedImageAvailableListener, mHandler);
         }
     }
 
-    public boolean takeZSLPicture() {
+//    public boolean startTakingZSLPicture(final long startTime) {
+//        mStatus = STATUS.BUSY;
+//        mController.setJpegImageData(null);
+////        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
+////        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetBestItem();
+//        ZSLQueue.ImageItem imageItemMono = null;
+//        ZSLQueue.ImageItem imageItemBayer = null;
+//
+//
+//        synchronized (mSecondZSLQueue.getmLock()) {
+//            imageItemMono = mZSLQueue.tryToGetBestItemParallel();
+//            TotalCaptureResult res = imageItemMono.getMetadata();
+//            if (res != null)
+//                imageItemBayer = mSecondZSLQueue.tryToGetNearestItem(res);
+////        imageItem = mZSLQueue.tryToGetMatchingItem();
+////            long anchorTime = res.get(CaptureResult.SENSOR_TIMESTAMP);
+////            int lol = 0;
+//
+//        }
+//    }
+
+    public boolean takeZSLPicture(boolean isBayer, final long startTime) {
         mController.setJpegImageData(null);
-        ZSLQueue.ImageItem imageItem = mZSLQueue.tryToGetMatchingItem();
-        if(mController.getPreviewCaptureResult() == null ||
-                mController.getPreviewCaptureResult().get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
-            if(DEBUG_ZSL) Log.d(TAG, "Flash required image");
-            imageItem = null;
-        }
-        if (mController.isSelfieFlash()) {
-            imageItem = null;
-        }
-        if (mController.isLongShotActive()) {
-            imageItem = null;
-        }
-        if (imageItem != null) {
-            if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
-            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
-            if (mSaveRaw && imageItem.getRawImage() != null) {
-                onRawImageToProcess(imageItem.getRawImage());
+        ZSLQueue.ImageItem imageItemMono = null;
+        ZSLQueue.ImageItem imageItemBayer = null;
+
+//        imageItemMono = mZSLQueue.tryToGetMatchingItem(mImageHandlerTask.getmMutureLock());
+        long time = System.currentTimeMillis() - startTime;
+        PhotoModule.NamedImages.NamedEntity name = mNamedImages.getNextNameEntity();
+
+        synchronized (mSecondZSLQueue.mLock) {
+//           mMutureLock
+            try {
+//                mSecondPostProcessor.mImageHandlerTask.mMutureLock.release();
+//                mImageHandlerTask.mMutureLock.release();
+                boolean monoLock = mImageHandlerTask.mMutureLock.tryAcquire(1, 10, TimeUnit.MILLISECONDS);
+                if (!monoLock) {
+                    return false;
+                }
+                boolean bayerLock = mSecondPostProcessor.mImageHandlerTask.mMutureLock.tryAcquire(1, 10, TimeUnit.MILLISECONDS);
+                if (!bayerLock) {
+                    mImageHandlerTask.mMutureLock.release();
+                    return false;
+                }
+                imageItemMono = mZSLQueue.tryToGetBestItemParallel();
+
+
+                if (imageItemMono != null) {
+                    long imTimestamp = imageItemMono.getRawImage().getTimestamp();
+                    imageItemBayer = mSecondZSLQueue.tryToGetNearestItem(imTimestamp);
+//                    imageItemBayer = mSecondZSLQueue.tryToGetNearestItem(imTimestamp);
+
+                }
+//                for (int i=0; i<mZSLQueue.mBuffer.length; i++) {
+//                    if (mZSLQueue.mBuffer[i] != null && mZSLQueue.mBuffer[i].getRawImage()!= null) {
+//                        Image imageMonoRaw = mZSLQueue.mBuffer[i].getRawImage();
+//                        byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
+//                        final String title = (name == null) ? null : name.title;
+//                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title + String.format("_%02d", i) + "_m.png";
+//                        convertAndSaveRawSensorNative(rawData, mMask, filename);
+//                    }
+//
+//                    if (mSecondPostProcessor.mZSLQueue.mBuffer[i] != null && mSecondPostProcessor.mZSLQueue.mBuffer[i].getImage()!= null) {
+//                        Image imageBayer = mSecondPostProcessor.mZSLQueue.mBuffer[i].getImage();
+//                        final String title = (name == null) ? null : name.title;
+//                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title + String.format("_%02d", i) + "_c.jpg";
+//
+//                        ClearSightImageProcessor.imwriteYUVimage(imageBayer, filename);
+////                        imageBayer.close();
+//                    }
+//                }
+                mSecondPostProcessor.mImageHandlerTask.mMutureLock.release();
+                mImageHandlerTask.mMutureLock.release();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
+        }
+
+//        String rawPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/DCIM/Camera/raw/";
+//        File rawDir = new File(rawPath);
+        //TODO: properly handle directories and filenames
+        File rawDir = new File("/mnt/sdcard/DCIM/Camera/raw/");
+        rawDir.mkdirs();
+//        CaptureResult previewCaptureResult = null;
+//        if (isBayer)
+//            previewCaptureResult = mController.getPreviewCaptureResultBayer();
+//        else
+//            previewCaptureResult = mController.getPreviewCaptureResultMono();
+////        previewCaptureResult = mController.getPreviewCaptureResult();
+//
+//        if(previewCaptureResult == null ||
+//               previewCaptureResult.get(CaptureResult.CONTROL_AE_STATE) == CameraMetadata.CONTROL_AE_STATE_FLASH_REQUIRED) {
+//            if(DEBUG_ZSL) Log.d(TAG, "Flash required image");
+//            imageItemMono = null;
+//        }
+//        if (mController.isSelfieFlash()) {
+//            imageItemMono= null;
+//        }
+//        if (mController.isLongShotActive()) {
+//            imageItemMono = null;
+//        }
+
+        long anotherDuration = System.currentTimeMillis() - startTime;
+
+        if (imageItemMono != null && imageItemBayer != null) {
+            if(DEBUG_ZSL) Log.d(TAG,"Got the item from the queue");
+
+            long captureStartTime = System.currentTimeMillis();
+            mNamedImages.nameNewImage(captureStartTime);
+            PhotoModule.NamedImages.NamedEntity name1 = mNamedImages.getNextNameEntity();
+            final String title = (name1 == null) ? null : name1.title;
+
+            final Image imageMono = imageItemMono.getImage();
+            final Image imageMonoRaw = imageItemMono.getRawImage();
+
+            final Image imageBayer = imageItemBayer.getImage();
+
+            if (imageMonoRaw != null) {
+                new Thread(new Runnable() {
+                    public void run() {
+                byte[] rawData = CaptureModule.getJpegData(imageMonoRaw);
+                String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
+                mActivity.getMediaSaveService().addRawImage(rawData, title, "raw");
+//                convertAndSaveRawSensorNative(rawData, mMask, filename);
+
+//                convertAndSaveRAW10Native(rawData, maskBytes, filename);
+//                byte[] resultData = new byte[4032*3016];
+//                get8bitDataFromRAW10(rawData, resultData);
+//                Mat test = new Mat(3016,4032, CvType.CV_8U);
+//                test.put(0, 0, resultData);
+//
+//                Imgcodecs.imwrite(filename, test);
+                long anotherDuration = System.currentTimeMillis() - startTime;
+                File resDuration = new File(filename + "_" + String.valueOf(anotherDuration));
+                imageMonoRaw.close();
+                    }
+                }).start();
+
+            }
+            if (imageMono != null) {
+                imageMono.close();
+//                new Thread(new Runnable() {
+//                    public void run() {
+////                        long duration = System.currentTimeMillis() - startTime;
+////                        String filename = "mnt/sdcard/DCIM/Camera/raw/." + title + "_" + String.valueOf(duration) +  "_m.jpg";
+//
+//                        String filename = "/mnt/sdcard/DCIM/Camera/raw/." + title +  "_m.png";
+//
+//                        ClearSightImageProcessor.imwriteMono(imageMono, filename);
+//                        imageMono.close();
+//
+//                        String[] files = new String[]{filename};
+//                        MediaScannerConnection.scanFile(mActivity, files, null, null);
+//
+////                        long anotherDuration = System.currentTimeMillis() - startTime;
+////                        File resDuration = new File(filename + "_" + String.valueOf(anotherDuration));
+////
+////                        try {
+////                            resDuration.createNewFile();
+////                        } catch (IOException e) {
+////                            e.printStackTrace();
+////                        }
+//                    }
+//
+//                    }).start();
+            }
+            if (imageBayer != null) {
+                new Thread(new Runnable() {
+                    public void run() {
+//                        long duration = System.currentTimeMillis() - startTime;
+                        String filename = "/mnt/sdcard/DCIM/Camera/raw/" + title +  "_c.jpg";
+
+                        ClearSightImageProcessor.imwriteYUVimage(imageBayer, filename);
+
+                        imageBayer.close();
+
+                        String[] files = new String[]{filename};
+                        MediaScannerConnection.scanFile(mActivity, files, null, null);
+
+                        long anotherDuration = System.currentTimeMillis() - startTime;
+                        File resDuration = new File(filename + "_" + String.valueOf(anotherDuration));
+//
+//                        try {
+//                            resDuration.createNewFile();
+//                        } catch (IOException e) {
+//                            e.printStackTrace();
+//                        }
+                    }
+                }).start();
+            }
+
             return true;
         } else {
-            if(DEBUG_ZSL) Log.d(TAG, "No good item in queue, register the request for the future");
-            if(mController.isLongShotActive()) {
-                if(DEBUG_ZSL) Log.d(TAG, "Long shot active in ZSL");
-                mPendingContinuousRequestCount = PersistUtil.getLongshotShotLimit();
-                return true;
-            } else {
-                mIsZSLFallOff = true;
-            }
+            if (imageItemBayer != null)
+                imageItemBayer.closeImage();
+            if (imageItemMono != null)
+                imageItemMono.closeImage();
             return false;
+
+//            if(DEBUG_ZSL) Log.d(TAG, "No good item in queue, register the request for the future");
+//            if(mController.isLongShotActive()) {
+//                if(DEBUG_ZSL) Log.d(TAG, "Long shot active in ZSL");
+//                mPendingContinuousRequestCount = PersistUtil.getLongshotShotLimit();
+//                return true;
+//            } else {
+//                mIsZSLFallOff = true;
+//            }
+//            return false;
         }
+
     }
 
     public boolean onContinuousZSLImage(ZSLQueue.ImageItem imageItem, boolean isLongShotRequest) {
         if(isLongShotRequest) {
             if(mLatestResultForLongShot != null) {
-                reprocessImage(imageItem.getImage(), mLatestResultForLongShot);
+//                reprocessImage(imageItem.getImage(), mLatestResultForLongShot);
                 if (imageItem.getRawImage() != null) {
                     onRawImageToProcess(imageItem.getRawImage());
                 }
@@ -483,7 +784,7 @@ public class PostProcessor{
                 return true;
             }
         } else {
-            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
+//            reprocessImage(imageItem.getImage(), imageItem.getMetadata());
             if (imageItem.getRawImage() != null) {
                 onRawImageToProcess(imageItem.getRawImage());
             }
@@ -616,6 +917,17 @@ public class PostProcessor{
         mController = module;
         mActivity = activity;
         mNamedImages = new PhotoModule.NamedImages();
+
+//        InputStream maskStream = mActivity.getResources().openRawResource(R.raw.mask);
+//        try {
+//            int n_read = maskStream.read(mMask);
+////            if (n_read != 4032 * 3016 * 4) {
+//
+////            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+
     }
 
     public boolean isItBusy() {
@@ -686,6 +998,10 @@ public class PostProcessor{
         } else {
             mUseZSL = true;
         }
+
+        mUseZSL = true;
+
+//        mUseZSL = true;
         Log.d(TAG,"ZSL is "+mUseZSL);
         startBackgroundThread();
         if(mUseZSL) {
